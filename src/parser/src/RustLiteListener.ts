@@ -28,6 +28,7 @@ import { ArgListContext } from "./RustLiteParser.js";
 import { FnCallContext } from "./RustLiteParser.js";
 import { VectorTypeContext } from "./RustLiteParser.js";
 import { VectorInitContext } from "./RustLiteParser.js";
+import { VectorInitListContext } from "./RustLiteParser.js";
 import { VectorPushContext } from "./RustLiteParser.js";
 import { VectorPopContext } from "./RustLiteParser.js";
 import { VectorLenContext } from "./RustLiteParser.js";
@@ -293,6 +294,16 @@ export class RustLiteListener implements ParseTreeListener {
      * @param ctx the parse tree
      */
     exitVectorInit?: (ctx: VectorInitContext) => void;
+    /**
+     * Enter a parse tree produced by `RustLiteParser.vectorInitList`.
+     * @param ctx the parse tree
+     */
+    enterVectorInitList?: (ctx: VectorInitListContext) => void;
+    /**
+     * Exit a parse tree produced by `RustLiteParser.vectorInitList`.
+     * @param ctx the parse tree
+     */
+    exitVectorInitList?: (ctx: VectorInitListContext) => void;
     /**
      * Enter a parse tree produced by `RustLiteParser.vectorPush`.
      * @param ctx the parse tree

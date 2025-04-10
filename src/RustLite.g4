@@ -2,9 +2,29 @@ grammar RustLite;
 
 prog: globalElement* EOF;
 
+LET: 'let';
+MUT: 'mut';
+FN: 'fn';
+IF: 'if';
+ELSE: 'else';
+WHILE: 'while';
+RETURN: 'return';
+BREAK: 'break';
+CONTINUE: 'continue';
+VEC: 'vec';
+NEW: 'new';
+PUSH: 'push';
+POP: 'pop';
+LEN: 'len';
+PRINTLN: 'println';
+LANGLE: '<';
+RANGLE: '>';
+EQUALS: '=';
+COLON: ':';
+SEMICOLON: ';';
+
 INT: [0-9]+;
 BOOL: 'true' | 'false';
-IDENTIFIER: [a-zA-Z_][a-zA-Z0-9_]*; // - not allowed in name.
 U8_TYPE: 'u8';
 U16_TYPE: 'u16';
 U32_TYPE: 'u32';
@@ -17,14 +37,16 @@ BOOL_TYPE: 'bool';
 STRING: '"' (~["\r\n] | '\\"')* '"';
 METHOD_ACCESSOR: '::';
 VECTOR_MODULE_NAME: 'Vec';
-
-type: U8_TYPE | U16_TYPE | U32_TYPE | U64_TYPE 
-    | I8_TYPE | I16_TYPE | I32_TYPE | I64_TYPE 
-    | BOOL_TYPE | vectorType;
+IDENTIFIER: [a-zA-Z_][a-zA-Z0-9_]*; // - not allowed in name.
+ERROR_CHAR: . -> channel(HIDDEN);
 
 // Ignore whitespace and comments
 WS: [ \t\r\n]+ -> skip;
 COMMENT: '//' ~[\r\n]* -> skip;
+
+type: U8_TYPE | U16_TYPE | U32_TYPE | U64_TYPE 
+    | I8_TYPE | I16_TYPE | I32_TYPE | I64_TYPE 
+    | BOOL_TYPE | vectorType;
 
 expr: '(' inner=expr ')'
     | IDENTIFIER
@@ -41,9 +63,9 @@ arithExpr: primary=INT
         | op='-' arithExpr
         | left=arithExpr op=('*'|'/'|'%') right=arithExpr
         | left=arithExpr op=('+'|'-') right=arithExpr
-        | BOOL {this.notifyErrorListeners("Cannot use boolean in arithmetic expressions");}
+        | BOOL {this.notifyErrorListeners("Cannot use boolean in arithmetic expressions", null, null);}
         | left=arithExpr op=('/'|'%') INT {
-            if ($right.text === 0) this.notifyErrorListeners("Division by zero");
+            if ($right.text === "0") this.notifyErrorListeners("Division by zero", null, null);
         };
 
 logicExpr: primary=BOOL
@@ -53,7 +75,7 @@ logicExpr: primary=BOOL
         | op='!' right=logicExpr
         | left=logicExpr op='&&' right=logicExpr
         | left=logicExpr op='||' right=logicExpr
-        | INT {this.notifyErrorListeners("Cannot use INT without comparison operators in logical expressions");};
+        | INT {this.notifyErrorListeners("Cannot use INT without comparison operators in logical expressions", null, null);};
 
 globalElement: fnDeclareStmt;
 
@@ -69,57 +91,60 @@ stmt: exprStmt
 // expr for implicit return in fn block. Need to check when compiling to bytecode
 block: '{' blockContent '}';
 
-blockContent: stmt* finalExpr=expr?
-        | stmt*
-        | stmt* expr (stmt|expr)* finalExpr=expr? {this.notifyErrorListeners("Missing semicolon after expression")};
+// blockContent: stmt* finalExpr=expr?
+//        | stmt*
+//        | stmt* expr (stmt|expr)* finalExpr=expr? {this.notifyErrorListeners("Missing semicolon after expression", null, null)};
+blockContent: stmt* (finalExpr=expr)?;
 
-exprStmt: expr ';';
 
-declareStmt: 'let' 'mut'? IDENTIFIER ':' type '=' exprStmt
-        | 'let' 'mut'? IDENTIFIER ':' type ';'
-        | 'let' 'mut'? IDENTIFIER '=' exprStmt
-        | 'let' 'mut'? IDENTIFIER {
-                this.notifyErrorListeners("Variable declaration requires either type annotation or initialization");
-            } ';'? 
-        | 'let' 'mut'? (':' type)? {this.notifyErrorListeners("Missing variable name in variable declaration");};
+exprStmt: expr SEMICOLON;
 
-condStmt: 'if' logicExpr block ('else' 'if' logicExpr block)* ('else' block)?
-        | 'if' expr {
-                this.notifyErrorListeners("Condition must be a boolean expression");
-            } block ('else' block)?;
+declareStmt: LET MUT? IDENTIFIER COLON type EQUALS expr SEMICOLON
+        | LET MUT? IDENTIFIER COLON type SEMICOLON
+        | LET MUT? IDENTIFIER EQUALS expr SEMICOLON;
+//        | LET MUT? IDENTIFIER {
+//                this.notifyErrorListeners("Variable declaration requires either type annotation or initialization", null, null);
+//            } SEMICOLON? 
+//        | LET MUT? (COLON type)? {this.notifyErrorListeners("Missing variable name in variable declaration", null, null);};
 
-whileStmt: 'while' logicExpr block
-        | 'while' expr {
-                this.notifyErrorListeners("Condition must be a boolean expression");
+condStmt: IF logicExpr block (ELSE IF logicExpr block)* (ELSE block)?
+        | IF expr {
+                this.notifyErrorListeners("Condition must be a boolean expression", null, null);
+            } block (ELSE block)?;
+
+whileStmt: WHILE logicExpr block
+        | WHILE expr {
+                this.notifyErrorListeners("Condition must be a boolean expression", null, null);
             } block;
 
-loopControl: 'break' | 'continue'; 
+loopControl: BREAK | CONTINUE; 
 
-loopControlStmt: loopControl ';';
+loopControlStmt: loopControl SEMICOLON;
 
 // Function declaration
-param: IDENTIFIER ':' type
-    | IDENTIFIER {this.notifyErrorListeners("Parameters must specify a type");};
+param: IDENTIFIER COLON type
+    | IDENTIFIER {this.notifyErrorListeners("Parameters must specify a type", null, null);};
 paramList: param (',' param)* ','?;
 
 returnTypes: type
             | '()';
 returnType: '->' returnTypes;
-returnStmt: 'return' expr? ';';
+returnStmt: RETURN expr? SEMICOLON;
 
-fnDeclareStmt: 'fn' IDENTIFIER ('(' paramList? ')' | '()')  returnType? block;
+fnDeclareStmt: FN IDENTIFIER ('(' paramList? ')' | '()')  returnType? block;
 
 argList: expr (',' expr)* ','?;
 fnCall: IDENTIFIER '(' argList? ')';
 
-vectorType: VECTOR_MODULE_NAME '<' type '>';
-vectorInit: VECTOR_MODULE_NAME METHOD_ACCESSOR 'new' ('()' | '(' ')')
-        | 'vec' '!' '[' initList=(INT|BOOL)* ']';
-vectorPush: IDENTIFIER '.' 'push' '(' INT|BOOL ')';
-vectorPop: IDENTIFIER '.' 'pop' ('()' | '(' ')');
-vectorLen: IDENTIFIER '.' 'len' ('()' | '(' ')');
+vectorType: VECTOR_MODULE_NAME LANGLE type RANGLE;
+vectorInit: VECTOR_MODULE_NAME METHOD_ACCESSOR NEW ('()' | '(' ')')
+        | VEC '!' '[' vectorInitList? ']';
+vectorInitList: (INT | BOOL) (',' INT | BOOL)*;
+vectorPush: IDENTIFIER '.' PUSH '(' INT|BOOL ')';
+vectorPop: IDENTIFIER '.' POP ('()' | '(' ')');
+vectorLen: IDENTIFIER '.' LEN ('()' | '(' ')');
 vectorIndexAccess: IDENTIFIER '[' expr ']';
-vectorAssignment: IDENTIFIER '[' expr ']' '=' expr;
+vectorAssignment: IDENTIFIER '[' expr ']' EQUALS vectorExpr;
 
 vectorExpr: vectorInit
         | vectorPush
@@ -129,5 +154,5 @@ vectorExpr: vectorInit
         | vectorAssignment;
         
 
-printlnMacro: 'println' '!' '(' printlnArgs ')';
+printlnMacro: PRINTLN '!' '(' printlnArgs ')';
 printlnArgs: STRING (',' expr)*;

@@ -9,7 +9,7 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     //TODO: Implement Visit Prog
     visitProg(ctx) {
         console.log(`Visiting Program, text parsed: ${ctx.getText()}`);
-        let result;
+        let result = 0;
         let globalElements = ctx.globalElement();
         if (!globalElements) {
             return 0;

@@ -59,7 +59,7 @@ class RustLiteEvaluatorVisitor
   //TODO: Implement Visit Prog
   visitProg(ctx: ProgContext): SUPPORTED_TYPES {
     console.log(`Visiting Program, text parsed: ${ctx.getText()}`);
-    let result: SUPPORTED_TYPES;
+    let result: SUPPORTED_TYPES = 0;
     let globalElements = ctx.globalElement();
     if (!globalElements) {
       return 0;

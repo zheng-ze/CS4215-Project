@@ -28,6 +28,7 @@ import { ArgListContext } from "./RustLiteParser.js";
 import { FnCallContext } from "./RustLiteParser.js";
 import { VectorTypeContext } from "./RustLiteParser.js";
 import { VectorInitContext } from "./RustLiteParser.js";
+import { VectorInitListContext } from "./RustLiteParser.js";
 import { VectorPushContext } from "./RustLiteParser.js";
 import { VectorPopContext } from "./RustLiteParser.js";
 import { VectorLenContext } from "./RustLiteParser.js";
@@ -196,6 +197,12 @@ export class RustLiteVisitor<Result> extends AbstractParseTreeVisitor<Result> {
      * @return the visitor result
      */
     visitVectorInit?: (ctx: VectorInitContext) => Result;
+    /**
+     * Visit a parse tree produced by `RustLiteParser.vectorInitList`.
+     * @param ctx the parse tree
+     * @return the visitor result
+     */
+    visitVectorInitList?: (ctx: VectorInitListContext) => Result;
     /**
      * Visit a parse tree produced by `RustLiteParser.vectorPush`.
      * @param ctx the parse tree
