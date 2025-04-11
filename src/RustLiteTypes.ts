@@ -87,13 +87,11 @@ export interface LDF extends instruction {
 
 export interface CALL extends instruction {
   type: instruction_type.CALL;
-  addr: number;
   arity: number;
 }
 
 export interface TAIL_CALL extends instruction {
   type: instruction_type.TAIL_CALL;
-  addr: number;
   arity: number;
 }
 

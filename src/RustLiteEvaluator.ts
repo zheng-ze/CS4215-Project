@@ -40,10 +40,22 @@ import {
   WhileStmtContext,
 } from "./parser/src/RustLiteParser";
 import {
+  GOTO,
   SUPPORTED_TYPES,
   instruction,
   instruction_type,
 } from "./RustLiteTypes";
+import {
+  assign,
+  binaryOperation,
+  call,
+  jump,
+  load,
+  loadConstant,
+  loadFunction,
+  reset,
+  unaryOperation,
+} from "./RustLiteCompiler";
 
 import { BasicEvaluator } from "conductor/dist/conductor/runner";
 import { IRunnerPlugin } from "conductor/dist/conductor/runner/types";
@@ -53,366 +65,351 @@ import { error } from "console";
 import { stat } from "fs";
 
 class RustLiteEvaluatorVisitor
-  extends AbstractParseTreeVisitor<SUPPORTED_TYPES>
-  implements RustLiteVisitor<SUPPORTED_TYPES>
+  extends AbstractParseTreeVisitor<void>
+  implements RustLiteVisitor<void>
 {
-  //TODO: Implement Visit Prog
-  visitProg(ctx: ProgContext): SUPPORTED_TYPES {
+  private wc: number = 0;
+  private instrs: instruction[] = [];
+
+  visitProg(ctx: ProgContext): void {
     console.log(`Visiting Program, text parsed: ${ctx.getText()}`);
-    let result: SUPPORTED_TYPES = 0;
     let globalElements = ctx.globalElement();
     if (!globalElements) {
-      return 0;
+      return;
     }
     for (let i = 0; i < globalElements.length; i++) {
       try {
-        if (globalElements[i]) {
-          console.log(`Statement: ${globalElements[i]}`);
-          result = this.visitGlobalElement(globalElements[i]);
-        }
+        if (!globalElements[i]) continue;
+        console.log(`Statement: ${globalElements[i].getText()}`);
+        this.visitGlobalElement(globalElements[i]);
       } catch (error) {
         throw `Error while visiting statement ${globalElements[i]}, with error: ${error}`;
       }
     }
-    return result;
+    const compileTimePos = { first: 0, second: 0 }; // TODO: Get the compile time position of the main function
+    if (!compileTimePos) {
+      // No main function found nothing will execute so return undefined
+      this.instrs = [
+        loadConstant(0), // TODO: Add null as supported type and return it
+      ];
+    }
   }
 
-  visitGlobalElement(ctx: GlobalElementContext): SUPPORTED_TYPES {
+  visitGlobalElement(ctx: GlobalElementContext): void {
     console.log("Visiting GlobalElement");
     if (ctx.fnDeclareStmt()) {
       return this.visitFnDeclareStmt(ctx.fnDeclareStmt());
     }
+    // TODO: Check if there is a main function and call it if it exists
     throw new Error(`Unknown global element: ${ctx.getText()}`);
   }
 
-  visitExpr(ctx: ExprContext): SUPPORTED_TYPES {
+  visitExpr(ctx: ExprContext): void {
     console.log("Visiting Expr");
-    if (ctx._inner) {
-      return this.visitExpr(ctx._inner);
-    }
+    if (ctx._inner) return this.visitExpr(ctx._inner);
     if (ctx.BOOL()) {
-      console.log("Visiting Expr: BOOL");
-      return ctx.BOOL().getText() === "true";
+      this.instrs[this.wc++] = loadConstant(ctx.BOOL().getText() === "true");
+      return;
     }
     if (ctx.INT()) {
-      console.log("Visiting Expr: INT");
-      return parseInt(ctx.INT().getText());
+      this.instrs[this.wc++] = loadConstant(parseInt(ctx.INT().getText()));
+      return;
     }
     if (ctx.IDENTIFIER()) {
-      console.log("Visiting Expr: IDENTIFIER");
       // TODO: Implement retrieving variable value
-      return 0;
+      throw new Error(
+        `Identifier not implemented: ${ctx.IDENTIFIER().getText()}`
+      );
     }
-    if (ctx.arithExpr()) {
-      return this.visitArithExpr(ctx.arithExpr());
-    }
-    if (ctx.logicExpr()) {
-      return this.visitLogicExpr(ctx.logicExpr());
-    }
-    if (ctx.fnCall()) {
-      // Struct field access
-      const fnCall = ctx.fnCall();
-      const result = this.visitFnCall(fnCall);
-      return result;
-    }
+    if (ctx.arithExpr()) return this.visitArithExpr(ctx.arithExpr());
+    if (ctx.logicExpr()) return this.visitLogicExpr(ctx.logicExpr());
+    if (ctx.fnCall()) return this.visitFnCall(ctx.fnCall());
   }
 
-  visitArithExpr(ctx: ArithExprContext): number {
+  visitArithExpr(ctx: ArithExprContext): void {
     console.log("Visiting ArithExpr");
     if (ctx.INT()) {
-      // Is integer
-      return parseInt(ctx.INT().getText());
+      this.instrs[this.wc++] = loadConstant(parseInt(ctx.INT().getText()));
+      return;
     }
 
     if (ctx.IDENTIFIER()) {
-      // Is variable
-      const variableName = ctx.IDENTIFIER().getText();
-      return 0; //TODO: Implement retrieving variable value
+      // TODO: Implement retrieving variable value
+      throw new Error(
+        `Identifier not implemented: ${ctx.IDENTIFIER().getText()}`
+      );
     }
 
-    if (ctx._inner) {
-      return this.visitArithExpr(ctx._inner);
-    }
+    if (ctx._inner) return this.visitArithExpr(ctx._inner);
 
-    if (ctx._op && ctx._op.text === "-" && !ctx._left) {
+    if (ctx._op && ctx._op.text === "-" && !ctx._left && ctx.arithExpr()) {
       // Unary minus
-      const right = this.visitArithExpr(ctx._right);
-      return -right;
+      const right = ctx.arithExpr();
+      for (let expr of right) {
+        this.visitArithExpr(expr);
+      }
+      this.instrs[this.wc++] = unaryOperation("-");
+      return;
     }
 
     if (ctx._left && ctx._right && ctx._op) {
       // Binary operation
-      const left = this.visitArithExpr(ctx._left);
-      const right = this.visitArithExpr(ctx._right);
-
-      switch (ctx._op.text) {
-        case "+":
-          return left + right;
-        case "-":
-          return left - right;
-        case "*":
-          return left * right;
-        case "/":
-          if (right === 0) {
-            throw new Error("Division by zero");
-          }
-          return Math.trunc(left / right); // Integer division
-        // TODO: Implement other operators like % and ^
-        default:
-          throw new Error(`Unknown operator: ${ctx._op.text}`);
-      }
+      this.visitArithExpr(ctx._left);
+      this.visitArithExpr(ctx._right);
+      this.instrs[this.wc++] = binaryOperation(ctx._op.text);
+      return;
     }
-
-    // throw new Error(`Invalid expression: ${ctx.getText()}`);
   }
 
-  visitLogicExpr(ctx: LogicExprContext): boolean {
+  visitLogicExpr(ctx: LogicExprContext): void {
     console.log("Visiting LogicExpr");
     if (ctx.BOOL()) {
-      return ctx.BOOL().getText() === "true";
+      this.instrs[this.wc++] = loadConstant(ctx.BOOL().getText() === "true");
+      return;
     }
 
     if (ctx.IDENTIFIER()) {
-      // Is variable
-      const variableName = ctx.IDENTIFIER().getText();
-      return false; //TODO: Implement retrieving variable value
+      // TODO: Implement retrieving variable value
+      throw new Error(
+        `Identifier not implemented: ${ctx.IDENTIFIER().getText()}`
+      );
     }
 
-    if (ctx._inner) {
-      return this.visitLogicExpr(ctx._inner);
-    }
+    if (ctx._inner) return this.visitLogicExpr(ctx._inner);
 
     if (ctx._arithLeft && ctx._arithRight && ctx._op) {
       // Comparison operation
-      const left = this.visitArithExpr(ctx._arithLeft);
-      const right = this.visitArithExpr(ctx._arithRight);
-
-      switch (ctx._op.text) {
-        case "==":
-          return left === right;
-        case "!=":
-          return left !== right;
-        case "<":
-          return left < right;
-        case "<=":
-          return left <= right;
-        case ">":
-          return left > right;
-        case ">=":
-          return left >= right;
-        default:
-          throw new Error(`Unknown operator: ${ctx._op.text}`);
-      }
+      this.visitArithExpr(ctx._arithLeft);
+      this.visitArithExpr(ctx._arithRight);
+      this.instrs[this.wc++] = binaryOperation(ctx._op.text);
+      return;
     }
 
     if (ctx._op && ctx._op.text === "!" && !ctx._left) {
       // Unary negation
-      const right = this.visitLogicExpr(ctx._right);
-      return !right;
+      this.visitLogicExpr(ctx._right);
+      this.instrs[this.wc++] = unaryOperation("!");
+      return;
     }
 
     if (ctx._left && ctx._right && ctx._op) {
       // Binary operation
-      const left = this.visitLogicExpr(ctx._left);
-      const right = this.visitLogicExpr(ctx._right);
-
-      switch (ctx._op.text) {
-        case "&&":
-          return left && right;
-        case "||":
-          return left || right;
-        default:
-          throw new Error(`Unknown operator: ${ctx._op.text}`);
-      }
+      this.visitLogicExpr(ctx._left);
+      this.visitLogicExpr(ctx._right);
+      this.instrs[this.wc++] = binaryOperation(ctx._op.text);
+      return;
     }
-
-    // throw new Error(`Invalid expression: ${ctx.getText()}`);
   }
 
-  visitStmt(ctx: StmtContext): SUPPORTED_TYPES {
+  visitStmt(ctx: StmtContext): void {
     console.log("Visiting Stmt");
-    if (ctx.exprStmt()) {
-      return this.visitExprStmt(ctx.exprStmt());
-    }
-    if (ctx.declareStmt()) {
-      return this.visitDeclareStmt(ctx.declareStmt());
-    }
-    if (ctx.condStmt()) {
-      return this.visitCondStmt(ctx.condStmt());
-    }
-    if (ctx.whileStmt()) {
-      return this.visitWhileStmt(ctx.whileStmt());
-    }
-    if (ctx.fnDeclareStmt()) {
+    if (ctx.exprStmt()) return this.visitExprStmt(ctx.exprStmt());
+    if (ctx.declareStmt()) return this.visitDeclareStmt(ctx.declareStmt());
+    if (ctx.condStmt()) return this.visitCondStmt(ctx.condStmt());
+    if (ctx.whileStmt()) return this.visitWhileStmt(ctx.whileStmt());
+    if (ctx.fnDeclareStmt())
       return this.visitFnDeclareStmt(ctx.fnDeclareStmt());
-    }
-    if (ctx.returnStmt()) {
-      return this.visitReturnStmt(ctx.returnStmt());
-    }
-    if (ctx.block()) {
-      return this.visitBlock(ctx.block());
-    }
+    if (ctx.returnStmt()) return this.visitReturnStmt(ctx.returnStmt());
+    if (ctx.block()) return this.visitBlock(ctx.block());
   }
 
-  visitBlock(ctx: BlockContext): SUPPORTED_TYPES {
+  visitBlock(ctx: BlockContext): void {
     console.log("Visiting Block");
-    return this.visitBlockContent(ctx.blockContent());
+    if (ctx.blockContent()) return this.visitBlockContent(ctx.blockContent());
   }
 
-  visitBlockContent(ctx: BlockContentContext): SUPPORTED_TYPES {
+  visitBlockContent(ctx: BlockContentContext): void {
     console.log("Visiting BlockContent");
-    let result: SUPPORTED_TYPES;
     const stmts = ctx.stmt();
 
-    for (let i = 0; i < stmts.length; i++) {
+    for (let stmt of stmts) {
+      if (!stmt) continue;
       try {
-        if (stmts[i]) {
-          console.log(`Statement: ${stmts[i]}`);
-          result = this.visitStmt(stmts[i]);
-        }
+        console.log(`Statement: ${stmt.getText()}`);
+        this.visitStmt(stmt);
       } catch (error) {
-        throw `Error while visiting statement ${stmts[i]}, with error: ${error}`;
+        throw `Error while visiting statement ${stmt.getText()}, with error: ${error}`;
       }
     }
     if (ctx._finalExpr) {
-      result = this.visitExpr(ctx._finalExpr);
+      this.visitExpr(ctx._finalExpr);
     }
-    return result;
   }
 
-  visitExprStmt(ctx: ExprStmtContext): SUPPORTED_TYPES {
+  visitExprStmt(ctx: ExprStmtContext): void {
     console.log("Visiting ExprStmt");
-    return this.visit(ctx.expr());
+    if (ctx.expr()) return this.visit(ctx.expr());
   }
 
-  visitDeclareStmt(ctx: DeclareStmtContext): SUPPORTED_TYPES {
+  visitDeclareStmt(ctx: DeclareStmtContext): void {
     console.log("Visiting DeclareStmt");
-    return 0;
+    const type = ctx.type(); // TODO: Do type checking if have time
+    const isMutable = ctx.MUT() ? true : false;
+    const name = ctx.IDENTIFIER().getText();
+    const value = ctx.expr();
+    if (value) this.visitExpr(value);
+    // TODO: Properly determine compile time env position
+    this.instrs[this.wc++] = assign({ first: 0, second: 0 });
+    return;
   }
 
-  visitCondStmt(ctx: CondStmtContext): SUPPORTED_TYPES {
+  visitCondStmt(ctx: CondStmtContext): void {
     console.log("Visiting CondStmt");
-    return 0;
+    return;
   }
 
-  visitWhileStmt(ctx: WhileStmtContext): SUPPORTED_TYPES {
+  visitWhileStmt(ctx: WhileStmtContext): void {
     console.log("Visiting WhileStmt");
-    return 0;
+    return;
   }
 
-  visitLoopControl(ctx: LoopControlContext): SUPPORTED_TYPES {
+  visitLoopControl(ctx: LoopControlContext): void {
     console.log("Visiting LoopControl");
-    return 0;
+    return;
   }
 
-  visitLoopControlStmt(ctx: LoopControlStmtContext): SUPPORTED_TYPES {
+  visitLoopControlStmt(ctx: LoopControlStmtContext): void {
     console.log("Visiting LoopControlStmt");
-    return 0;
+    return;
   }
 
-  visitParam(ctx: ParamContext): SUPPORTED_TYPES {
-    console.log("Visiting Param");
-    return 0;
+  private processParam(ctx: ParamContext): [string, string] {
+    if (!ctx.type() || !ctx.IDENTIFIER()) {
+      throw new Error("Invalid parameter");
+    }
+    const type = ctx.type().getText();
+    const name = ctx.IDENTIFIER().getText();
+
+    return [type, name];
   }
 
-  visitParamList(ctx: ParamListContext): SUPPORTED_TYPES {
+  private processParamList(ctx: ParamListContext | null): [string[], string[]] {
     console.log("Visiting ParamList");
-    return 0;
+    if (!ctx || ctx.param().length === 0) return [[], []];
+    const types: string[] = [];
+    const names: string[] = [];
+    const params = ctx.param();
+    for (let param of params) {
+      if (!param) continue;
+      const [type, name] = this.processParam(param);
+      types.push(type);
+      names.push(name);
+    }
+    return [types, names];
   }
 
-  visitReturnType(ctx: ReturnTypeContext): SUPPORTED_TYPES {
+  private processReturnType(ctx: ReturnTypeContext): string {
     console.log("Visiting ReturnType");
-    return 0;
+    if (!ctx || !ctx.returnTypes()) return "void";
+    return this.processReturnTypes(ctx.returnTypes());
   }
 
-  visitReturnStmt(ctx: ReturnStmtContext): SUPPORTED_TYPES {
-    console.log("Visiting ReturnStmt");
-    return 0;
-  }
-
-  visitFnDeclareStmt(ctx: FnDeclareStmtContext): SUPPORTED_TYPES {
-    this.visitParamList(ctx.paramList());
-    this.visitReturnType(ctx.returnType());
-    console.log("Visiting FnDeclareStmt");
-    this.visitBlock(ctx.block());
-    return 0;
-  }
-
-  visitReturnTypes(ctx: ReturnTypesContext): SUPPORTED_TYPES {
+  private processReturnTypes(ctx: ReturnTypesContext): string {
     console.log("Visiting ReturnTypes");
-    return 0;
+    if (!ctx || !ctx.type()) return "void";
+    const type = ctx.type().getText();
+    return type;
   }
 
-  visitFnCall(ctx: FnCallContext): SUPPORTED_TYPES {
+  visitReturnStmt(ctx: ReturnStmtContext): void {
+    console.log("Visiting ReturnStmt");
+    if (ctx.expr()) return this.visitExpr(ctx.expr());
+  }
+
+  visitFnDeclareStmt(ctx: FnDeclareStmtContext): void {
+    console.log("Visiting FnDeclareStmt");
+    const [types, names] = this.processParamList(ctx.paramList());
+    const returnType = this.processReturnType(ctx.returnType());
+
+    if (types.length !== names.length) {
+      throw new Error(
+        `Parameter types and names do not match: ${types.length} != ${names.length}`
+      );
+    }
+
+    this.instrs[this.wc++] = loadFunction(this.wc + 1, names.length); // this.wc + 1 is after goto instr
+    const gotoInstr: GOTO = jump(0); // 0 is a placeholder
+    this.instrs[this.wc++] = gotoInstr;
+    this.visitBlock(ctx.block());
+    this.instrs[this.wc++] = loadConstant(0); // TODO: Add null as supported type and return it
+    this.instrs[this.wc++] = reset();
+    gotoInstr.addr = this.wc; // Set the address of the jump instruction to the current instruction count which is after the function body
+    return;
+  }
+
+  visitFnCall(ctx: FnCallContext): void {
     console.log("Visiting FnCall");
-    return 0;
+    const fnName = ctx.IDENTIFIER().getText();
+    const compileTimePos = { first: 0, second: 0 }; // TODO: Get the compile time position of the function
+    this.instrs[this.wc++] = load(compileTimePos); // TODO: Add function address
+    const args = ctx.argList();
+    if (args) {
+      for (let arg of args.expr()) {
+        if (!arg) continue;
+        this.visitExpr(arg); // Loads arguments onto the stack
+      }
+    }
+    this.instrs[this.wc++] = call(args ? args.expr().length : 0);
+    return;
   }
 
-  visitArgList(ctx: ArgListContext): SUPPORTED_TYPES {
-    console.log("Visiting ArgList");
-    return 0;
-  }
-
-  visitVectorExpr(ctx: VectorExprContext): SUPPORTED_TYPES {
+  visitVectorExpr(ctx: VectorExprContext): void {
     console.log("Visiting VectorExpr");
-    return 0;
+    return;
   }
 
-  visitVectorInit(ctx: VectorInitContext): SUPPORTED_TYPES {
+  visitVectorInit(ctx: VectorInitContext): void {
     console.log("Visiting VectorInit");
-    return 0;
+    return;
   }
 
-  visitVectorType(ctx: VectorTypeContext): SUPPORTED_TYPES {
+  visitVectorType(ctx: VectorTypeContext): void {
     console.log("Visiting Type");
-    return 0;
+    return;
   }
 
-  visitVectorAssignment(ctx: VectorAssignmentContext): SUPPORTED_TYPES {
+  visitVectorAssignment(ctx: VectorAssignmentContext): void {
     console.log("Visiting VectorAssignment");
-    return 0;
+    return;
   }
 
-  visitVectorIndexAccess(ctx: VectorIndexAccessContext): SUPPORTED_TYPES {
+  visitVectorIndexAccess(ctx: VectorIndexAccessContext): void {
     console.log("Visiting VectorIndexAccess");
-    return 0;
+    return;
   }
 
-  visitVectorLen(ctx: VectorLenContext): SUPPORTED_TYPES {
+  visitVectorLen(ctx: VectorLenContext): void {
     console.log("Visiting VectorLen");
-    return 0;
+    return;
   }
 
-  visitVectorPop(ctx: VectorPopContext): SUPPORTED_TYPES {
+  visitVectorPop(ctx: VectorPopContext): void {
     console.log("Visiting VectorPop");
-    return 0;
+    return;
   }
 
-  visitVectorPush(ctx: VectorPushContext): SUPPORTED_TYPES {
+  visitVectorPush(ctx: VectorPushContext): void {
     console.log("Visiting VectorPush");
-    return 0;
+    return;
   }
 
-  visitPrintlnArgs(ctx: PrintlnArgsContext): SUPPORTED_TYPES {
+  visitPrintlnArgs(ctx: PrintlnArgsContext): void {
     console.log("Visiting PrintlnArgs");
-    return 0;
+    return;
   }
 
-  visitPrintlnMacro(ctx: PrintlnMacroContext): SUPPORTED_TYPES {
+  visitPrintlnMacro(ctx: PrintlnMacroContext): void {
     console.log("Visiting PrintlnMacro");
-    return 0;
+    return;
   }
 
-  protected defaultResult(): SUPPORTED_TYPES {
-    return 0;
+  protected defaultResult(): void {
+    return;
   }
 
-  // Override the aggregate result method
-  protected aggregateResult(
-    aggregate: SUPPORTED_TYPES,
-    nextResult: SUPPORTED_TYPES
-  ): SUPPORTED_TYPES {
-    return nextResult;
+  getCompiledInstructions(): readonly instruction[] {
+    // Return readonly copy of the instructions
+    return Object.freeze(this.instrs);
   }
 }
 
@@ -472,10 +469,14 @@ export class RustLiteEvaluator extends BasicEvaluator {
       const tree = parser.prog();
 
       // Evaluate the parsed tree
-      const result = this.visitor.visit(tree);
+      this.visitor.visit(tree);
+      console.log("Compiled instructions:");
+      console.log(this.visitor.getCompiledInstructions());
 
       // Send the result to the REPL
-      this.conductor.sendOutput(`Result of expression: ${result}`);
+      this.conductor.sendOutput(
+        `Result of expression: ${this.visitor.getCompiledInstructions()}`
+      );
     } catch (error) {
       // Handle errors and send them to the REPL
       if (error instanceof Error) {

@@ -91,21 +91,20 @@ stmt: exprStmt
 // expr for implicit return in fn block. Need to check when compiling to bytecode
 block: '{' blockContent '}';
 
-// blockContent: stmt* finalExpr=expr?
-//        | stmt*
-//        | stmt* expr (stmt|expr)* finalExpr=expr? {this.notifyErrorListeners("Missing semicolon after expression", null, null)};
-blockContent: stmt* (finalExpr=expr)?;
+blockContent: stmt* (finalExpr=expr)?
+        | stmt*
+        | stmt* expr (stmt|expr)* finalExpr=expr? {this.notifyErrorListeners("Missing semicolon after expression", null, null)};
 
 
 exprStmt: expr SEMICOLON;
 
 declareStmt: LET MUT? IDENTIFIER COLON type EQUALS expr SEMICOLON
         | LET MUT? IDENTIFIER COLON type SEMICOLON
-        | LET MUT? IDENTIFIER EQUALS expr SEMICOLON;
-//        | LET MUT? IDENTIFIER {
-//                this.notifyErrorListeners("Variable declaration requires either type annotation or initialization", null, null);
-//            } SEMICOLON? 
-//        | LET MUT? (COLON type)? {this.notifyErrorListeners("Missing variable name in variable declaration", null, null);};
+        | LET MUT? IDENTIFIER EQUALS expr SEMICOLON
+        | LET MUT? IDENTIFIER {
+                this.notifyErrorListeners("Type annotations needed", null, null);
+            } SEMICOLON? 
+        | LET MUT? (COLON type)? {this.notifyErrorListeners("Expected identifier", null, null);} (EQUALS COLON expr)? SEMICOLON;
 
 condStmt: IF logicExpr block (ELSE IF logicExpr block)* (ELSE block)?
         | IF expr {
