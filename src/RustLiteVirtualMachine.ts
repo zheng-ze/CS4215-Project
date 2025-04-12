@@ -134,6 +134,7 @@ class RuntimeStack {
     const buffer = new ArrayBuffer(max_words * word_size);
     this.data = new DataView(buffer);
     this.sp = 0;
+    this.fp = 0;  // Initialize frame pointer
   }
 
   // Get value at a specific word index (e.g., for debugging)
@@ -235,6 +236,10 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   constructor(instrs: instruction[]) {
     this.reset();
     this.instrs = instrs;
+    this.stack = new RuntimeStack();
+    this.heap = new Heap(100);
+    this.pc = 0;
+    this.e = 0;
   }
 
   run(): SUPPORTED_TYPES {
@@ -565,7 +570,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     throw new Error(`Unsupported type: ${typeof val}`);
   }
 
-  private unop_microcode = {
+  private unop_microcode: any = {
     "-unary": (num: number) => -num,
     "!": (bool: boolean) => !bool,
   };
@@ -574,7 +579,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     return this.unop_microcode[op](this.address_to_JS_value(address));
   }
 
-  private binop_microcode = {
+  private binop_microcode: any = {
     "+": (left: number, right: number) => left + right,
     "-": (left: number, right: number) => left - right,
     "*": (left: number, right: number) => left * right,

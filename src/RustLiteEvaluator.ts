@@ -63,6 +63,7 @@ import { BasicEvaluator } from "conductor/dist/conductor/runner";
 import { IRunnerPlugin } from "conductor/dist/conductor/runner/types";
 import { RustLiteLexer } from "./parser/src/RustLiteLexer";
 import { RustLiteVisitor } from "./parser/src/RustLiteVisitor";
+import { RustLiteVirtualMachine } from "./RustLiteVirtualMachine";
 import { error } from "console";
 import { stat } from "fs";
 
@@ -618,12 +619,19 @@ export class RustLiteEvaluator extends BasicEvaluator {
 
       // Evaluate the parsed tree
       this.visitor.visit(tree);
-      console.log("Compiled instructions:");
-      console.log(this.visitor.getCompiledInstructions());
+      const instructions = this.visitor.getCompiledInstructions();
+      
+      // Create and run VM with instructions
+      const vm = new RustLiteVirtualMachine([...instructions]);
+      const result = vm.run();
 
-      // Send the result to the REPL
+      console.log("Compiled instructions:");
+      console.log(instructions);
+
+      // Send both instructions and execution result to the REPL
       this.conductor.sendOutput(
-        `Result of expression: ${this.visitor.getCompiledInstructions()}`
+        `Compiled instructions: ${JSON.stringify(instructions, null, 2)}\n` +
+        `Execution result: ${result}`
       );
     } catch (error) {
       // Handle errors and send them to the REPL
