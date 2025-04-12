@@ -183,6 +183,35 @@ class RuntimeStack {
     }
     console.log("[Stack]", values);
   }
+
+  // Add methods for stack frame management
+  pushFrame(frameSize: number): void {
+    // Store the frame pointer and size
+    this.push(this.sp);  // Store old frame pointer
+    this.push(frameSize);
+    // Reserve space for local variables
+    for (let i = 0; i < frameSize; i++) {
+      this.push(0);  // Initialize locals to 0
+    }
+  }
+
+  popFrame(): void {
+    const frameSize = this.pop();
+    const oldFp = this.pop();
+    // Restore stack pointer to before frame
+    this.sp = oldFp;
+  }
+
+  // Add methods for accessing local variables within the current frame
+  getLocal(offset: number): number {
+    const framePtr = this.get(this.sp - 1);
+    return this.get(framePtr + offset);
+  }
+
+  setLocal(offset: number, value: number): void {
+    const framePtr = this.get(this.sp - 1);
+    this.data.setFloat64((framePtr + offset) * word_size, value, true);
+  }
 }
 
 interface VirtualMachine<T> {
@@ -273,57 +302,58 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     },
     [instruction_type.ENTER_SCOPE]: (instr: instruction) => {
       const enter = instr as ENTER_SCOPE;
-      const blockframe_addr = this.allocate_Blockframe(this.e);
-      this.stack.push(blockframe_addr);
-      const frame_addr = this.allocate_Environment(enter.num);
-      this.e = this.environment_extend(frame_addr, this.e);
-      for (let i = 0; i < enter.num; i++) {
-        this.heap.set_child(frame_addr, i, 0); // initialize to 0
-      }
+      // Create new stack frame for the scope
+      this.stack.pushFrame(enter.num);
+      // Initialize locals to 0 (already done in pushFrame)
     },
+
     [instruction_type.EXIT_SCOPE]: (instr: instruction) => {
-      const frame_addr = this.get_blockframe_env(this.stack.pop());
-      this.e = frame_addr;
+      // Pop the current stack frame
+      this.stack.popFrame();
     },
+
     [instruction_type.LD]: (instr: instruction) => {
       const ld = instr as LD;
-      const value = this.get_Environment_value(this.e, ld.pos);
+      // Load from stack frame instead of environment
+      const value = this.stack.getLocal(ld.pos.second);
       this.stack.push(value);
     },
+
     [instruction_type.ASSIGN]: (instr: instruction) => {
       const assign = instr as ASSIGN;
       const value = this.stack.peek();
-      this.set_Environment_value(this.e, assign.pos, value);
+      // Store in stack frame instead of environment
+      this.stack.setLocal(assign.pos.second, value);
     },
-    [instruction_type.LDF]: (instr: instruction) => {
-      const ldf = instr as LDF;
-      const addr = this.allocate_Closure(ldf.arity, ldf.addr, this.e);
-      this.stack.push(addr);
-    },
+
     [instruction_type.CALL]: (instr: instruction) => {
       const call = instr as CALL;
       const arity = call.arity;
       
-      const args = new Array(arity);
+      // Create new stack frame for function call
+      this.stack.pushFrame(arity);
+      
+      // Pop arguments and store in new frame
       for (let i = arity - 1; i >= 0; i--) {
-        args[i] = this.stack.pop();
+        const arg = this.stack.pop();
+        this.stack.setLocal(i, arg);
       }
+      
       const fun = this.stack.pop();
-
-      const new_e = this.allocate_Environment(arity);
-      for (let i = 0; i < arity; i++) {
-        this.heap.set_child(new_e, i, args[i]);
-      }
-
-      const callframe_addr = this.allocate_Callframe(this.e, this.pc);
-      this.stack.push(callframe_addr);
-
-      const fun_addr = this.get_closure_env(fun);
-      this.e = this.environment_extend(new_e, fun_addr);
-
-      const new_pc = this.get_closure_pc(fun);
-      this.pc = new_pc;
+      // Save return address
+      this.stack.push(this.pc);
+      
+      // Jump to function
+      this.pc = this.get_closure_pc(fun);
     },
+
+    [instruction_type.RESET]: (instr: instruction) => {
+      // Restore return address
+      this.pc = this.stack.pop();
+      // Pop function's stack frame
+      this.stack.popFrame();
+    },
+    
     [instruction_type.TAIL_CALL]: (instr: instruction) => {
       const tail_call = instr as TAIL_CALL;
       const arity = tail_call.arity;
@@ -343,16 +373,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
       const new_pc = this.get_closure_pc(fun);
       this.pc = new_pc;
-    },
-    [instruction_type.RESET]: (instr: instruction) => {
-      const reset = instr as RESET;
-      this.pc--;
-      const top_frame = this.stack.pop();
-      if (this.is_Callframe(top_frame)) {
-        this.e = this.get_callframe_env(top_frame);
-        this.pc = this.get_callframe_pc(top_frame);
-      }
-    },
+    }
   };
 
   // bool
