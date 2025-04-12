@@ -61,7 +61,20 @@ export function jump(address: number): GOTO {
   };
 }
 
+// Add a new type to track variable scope information
+interface ScopeInfo {
+  frameLevel: number;
+  offset: number;
+}
+
+// Add scope tracking to compiler
+let currentFrameLevel = 0;
+let currentOffset = 0;
+const scopeMap = new Map<string, ScopeInfo>();
+
 export function enterScope(num: number): ENTER_SCOPE {
+  currentFrameLevel++;
+  currentOffset = 0;
   return {
     type: instruction_type.ENTER_SCOPE,
     num: num,
@@ -69,30 +82,70 @@ export function enterScope(num: number): ENTER_SCOPE {
 }
 
 export function exitScope(): EXIT_SCOPE {
+  currentFrameLevel--;
+  // Clear variables from the current scope
+  for (const [name, info] of scopeMap.entries()) {
+    if (info.frameLevel === currentFrameLevel + 1) {
+      scopeMap.delete(name);
+    }
+  }
   return {
     type: instruction_type.EXIT_SCOPE,
   };
 }
 
-export function loadFunction(address: number, arity: number): LDF {
-  return {
-    type: instruction_type.LDF,
-    addr: address,
-    arity: arity,
-  };
-}
-
-export function load(pos: Pair<number>): LD {
+export function load(name: string): LD {
+  const info = scopeMap.get(name);
+  if (!info) {
+    throw new Error(`Undefined variable: ${name}`);
+  }
   return {
     type: instruction_type.LD,
-    pos: pos,
+    pos: {first: info.frameLevel, second: info.offset},
   };
 }
 
-export function assign(pos: Pair<number>): ASSIGN {
+// Add function scope tracking
+let functionScopes: Map<string, ScopeInfo>[] = [];
+
+export function enterFunctionScope(): void {
+  functionScopes.push(new Map());
+  currentFrameLevel = 0;
+  currentOffset = 0;
+}
+
+export function exitFunctionScope(): void {
+  functionScopes.pop();
+}
+
+export function loadFunction(arity: number, address: number): LDF {
+  return {
+    type: instruction_type.LDF,
+    arity: arity,
+    addr: address,
+  };
+}
+
+// Update assign to handle function parameters
+export function assign(name: string, isParameter: boolean = false): ASSIGN {
+  const info = scopeMap.get(name);
+  if (!info) {
+    const newInfo = {
+      frameLevel: currentFrameLevel,
+      offset: isParameter ? currentOffset : currentOffset++
+    };
+    scopeMap.set(name, newInfo);
+    if (isParameter) {
+      currentOffset++;
+    }
+    return {
+      type: instruction_type.ASSIGN,
+      pos: { first: newInfo.frameLevel, second: newInfo.offset },
+    };
+  }
   return {
     type: instruction_type.ASSIGN,
-    pos: pos,
+    pos: { first: info.frameLevel, second: info.offset },
   };
 }
 

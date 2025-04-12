@@ -58,7 +58,17 @@ class Heap {
   constructor(numWords: number) {
     const buffer = new ArrayBuffer(numWords * word_size);
     this.data = new DataView(buffer);
+
+    // Initialize free list
     this.free = 0;
+
+    // Set up the free list chain
+    for (let i = 0; i < numWords - 1; i++) {
+      this.set(i * word_size, (i + 1) * word_size);
+    }
+
+    // Mark the end of the free list
+    this.set((numWords - 1) * word_size, -1);
   }
 
   get(index: number): number {
@@ -146,8 +156,11 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   instrs: instruction[];
 
   constructor(instrs: instruction[]) {
-    this.reset();
     this.instrs = instrs;
+    this.stack = new RustLiteStack();
+    this.heap = new Heap(100);
+    this.pc = 0;
+    this.e = 0;
   }
 
   run(): SUPPORTED_TYPES {
@@ -164,7 +177,8 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       }
     }
 
-    return this.address_to_JS_value(this.stack.peek());
+    // Return the value directly from stack since we store primitives there
+    return this.stack.peek();
   }
 
   reset(): void {
@@ -181,6 +195,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
         // Store primitives directly on the stack
         this.stack.push(ldc.val);
       } else {
+        console.log("Non Primitive Value");
         const addr = this.JS_value_to_address(ldc.val);
         this.stack.push(addr);
       }
@@ -204,6 +219,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     [instruction_type.JOF]: (instr: instruction) => {
       const jof = instr as JOF;
       const condition = this.stack.pop();
+      // Jump if condition is falsy (0 or false)
       if (condition === 0) {
         this.pc = jof.addr;
       }
@@ -238,31 +254,38 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       this.stack.setLocal(assign.pos.second, value);
     },
 
+    [instruction_type.LDF]: (instr: instruction) => {
+      const ldf = instr as LDF;
+      const closure_addr = this.allocate_Closure(ldf.arity, ldf.addr, this.e);
+      this.stack.push(closure_addr);
+      // Don't skip over function body - the compiler handles this
+    },
+
     [instruction_type.CALL]: (instr: instruction) => {
       const call = instr as CALL;
       const arity = call.arity;
 
-      // Save current execution context on stack
-      this.stack.push(this.pc); // Return address
+      // Get function closure first
+      const fun = this.stack.pop();
+      if (!this.is_Closure(fun)) {
+        throw new Error("Attempting to call a non-function value");
+      }
 
-      // Create new stack frame for function parameters
+      // Save current execution context
+      this.stack.push(this.pc);
+
+      // Create new stack frame for parameters
       this.stack.pushFrame(arity);
 
-      // Pop arguments and store in new frame
+      // Pop arguments in reverse order and store in frame
       for (let i = arity - 1; i >= 0; i--) {
         const arg = this.stack.pop();
         this.stack.setLocal(i, arg);
       }
 
-      const fun = this.stack.pop();
-
       // Jump to function code
-      if (this.is_Closure(fun)) {
-        this.pc = this.get_closure_pc(fun);
-        this.e = this.get_closure_env(fun);
-      } else {
-        throw new Error("Attempting to call a non-function value");
-      }
+      this.pc = this.get_closure_pc(fun);
+      this.e = this.get_closure_env(fun);
     },
 
     [instruction_type.RESET]: (instr: instruction) => {
@@ -292,12 +315,6 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       } else {
         throw new Error("Attempting to call a non-function value");
       }
-    },
-
-    [instruction_type.LDF]: (instr: instruction) => {
-      const ldf = instr as LDF;
-      const closure_addr = this.allocate_Closure(ldf.arity, ldf.addr, this.e);
-      this.stack.push(closure_addr);
     },
   };
 
@@ -342,10 +359,10 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   }
 
   private allocate_Closure(arity: number, pc: number, env: number): number {
-    const address = this.heap.allocate(HeapTag.Closure, 2);
+    const address = this.heap.allocate(HeapTag.Closure, 3);
     this.heap.set_at_offset(address, 1, arity);
     this.heap.set_2_at_offset(address, 2, pc);
-    this.heap.set(address + 1, env);
+    this.heap.set_child(address, 0, env);
     return address;
   }
 
@@ -466,26 +483,30 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
   private JS_value_to_address(val: SUPPORTED_TYPES): number {
     if (typeof val === "number") {
-      return this.stack.push(val);
+      return this.allocateNumber(val);
     }
 
     if (typeof val === "boolean") {
-      return this.stack.push(val ? 1 : 0);
+      return this.allocate_Bool(val);
     }
 
     throw new Error(`Unsupported type: ${typeof val}`);
   }
 
-  private unop_microcode = {
+  private unop_microcode: any = {
     "-unary": (num: number) => -num,
     "!": (bool: boolean) => !bool,
   };
 
-  private apply_unop(op: string, address: number): SUPPORTED_TYPES {
-    return this.unop_microcode[op](this.address_to_JS_value(address));
+  private apply_unop(op: string, value: number): SUPPORTED_TYPES {
+    // Convert numeric 0/1 to boolean for boolean operations
+    if (op === "!") {
+      return this.unop_microcode[op](value === 0 ? false : true);
+    }
+    return this.unop_microcode[op](value);
   }
 
-  private binop_microcode = {
+  private binop_microcode: any = {
     "+": (left: number, right: number) => left + right,
     "-": (left: number, right: number) => left - right,
     "*": (left: number, right: number) => left * right,
@@ -507,11 +528,35 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     "||": (left: boolean, right: boolean) => left || right,
   };
 
-  private apply_binop(op: string, left: number, right: number): number {
+  private apply_binop(
+    op: string,
+    left: number,
+    right: number
+  ): SUPPORTED_TYPES {
     const operation = this.binop_microcode[op];
     if (!operation) {
       throw new Error(`Unknown binary operator: ${op}`);
     }
+
+    // Convert numeric 0/1 to boolean for boolean operations
+    if (op === "&&" || op === "||") {
+      return operation(left === 0 ? false : true, right === 0 ? false : true)
+        ? 1
+        : 0;
+    }
+
+    // For comparison operators, return 1 for true and 0 for false
+    if (
+      op === "==" ||
+      op === "!=" ||
+      op === "<" ||
+      op === "<=" ||
+      op === ">" ||
+      op === ">="
+    ) {
+      return operation(left, right) ? 1 : 0;
+    }
+
     return operation(left, right);
   }
 }
