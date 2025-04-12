@@ -49,6 +49,7 @@ import {
   assign,
   binaryOperation,
   call,
+  done,
   enterScope,
   exitScope,
   jump,
@@ -102,10 +103,11 @@ class RustLiteEvaluatorVisitor
     // After processing all global elements, call main if it exists
     const mainAddr = this.functionTable.get('main');
     if (mainAddr !== undefined) {
-      this.instrs[this.wc++] = loadConstant(mainAddr);
-      this.instrs[this.wc++] = call(0); // main takes no arguments
+      
+      this.instrs[this.wc++] = loadFunction(0, mainAddr);  // Load the function
+      this.instrs[this.wc++] = call(0);  // Call main with 0 arguments
     }
-    this.instrs[this.wc++] = reset(); // Reset the stack after program execution
+    this.instrs[this.wc++] = done();  // End program execution
   }
 
   visitGlobalElement(ctx: GlobalElementContext): void {
@@ -472,7 +474,7 @@ class RustLiteEvaluatorVisitor
       );
     }
 
-    this.instrs[this.wc++] = loadFunction(this.wc + 1, names.length); // this.wc + 1 is after goto instr
+    this.instrs[this.wc++] = loadFunction(names.length, this.wc + 1); // this.wc + 1 is after goto instr
     const gotoInstr: GOTO = jump(0); // 0 is a placeholder
     this.instrs[this.wc++] = gotoInstr;
     this.visitBlock(blockCtx);
@@ -620,13 +622,14 @@ export class RustLiteEvaluator extends BasicEvaluator {
       // Evaluate the parsed tree
       this.visitor.visit(tree);
       const instructions = this.visitor.getCompiledInstructions();
+      console.log("Compiled instructions:");
+      console.log(instructions);
       
       // Create and run VM with instructions
       const vm = new RustLiteVirtualMachine([...instructions]);
       const result = vm.run();
 
-      console.log("Compiled instructions:");
-      console.log(instructions);
+     
 
       // Send both instructions and execution result to the REPL
       this.conductor.sendOutput(
