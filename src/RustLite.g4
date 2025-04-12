@@ -60,7 +60,7 @@ expr: '(' inner=expr ')'
 arithExpr: primary=INT
         | primary=IDENTIFIER
         | '(' inner=arithExpr ')'
-        | op='-' arithExpr
+        | op='-' right=arithExpr
         | left=arithExpr op=('*'|'/'|'%') right=arithExpr
         | left=arithExpr op=('+'|'-') right=arithExpr
         | BOOL {this.notifyErrorListeners("Cannot use boolean in arithmetic expressions", null, null);}

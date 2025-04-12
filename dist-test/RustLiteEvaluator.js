@@ -29,6 +29,13 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
                 throw `Error while visiting statement ${globalElements[i]}, with error: ${error}`;
             }
         }
+        const compileTimePos = { first: 0, second: 0 }; // TODO: Get the compile time position of the main function
+        if (!compileTimePos) {
+            // No main function found nothing will execute so return undefined
+            this.instrs = [
+                (0, RustLiteCompiler_1.loadConstant)(0), // TODO: Add null as supported type and return it
+            ];
+        }
     }
     visitGlobalElement(ctx) {
         console.log("Visiting GlobalElement");
@@ -40,105 +47,133 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     }
     visitExpr(ctx) {
         console.log("Visiting Expr");
-        if (ctx._inner)
-            return this.visitExpr(ctx._inner);
-        if (ctx.BOOL()) {
-            this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(ctx.BOOL().getText() === "true");
+        const bool = ctx.BOOL();
+        const int = ctx.INT();
+        const identifier = ctx.IDENTIFIER();
+        const vectorExprCtx = ctx.vectorExpr();
+        const arithExprCtx = ctx.arithExpr();
+        const logicExprCtx = ctx.logicExpr();
+        const fnCallCtx = ctx.fnCall();
+        const innerCtx = ctx._inner;
+        if (innerCtx)
+            return this.visitExpr(innerCtx);
+        if (bool) {
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(bool.getText() === "true");
             return;
         }
-        if (ctx.INT()) {
-            this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(parseInt(ctx.INT().getText()));
+        if (int) {
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(parseInt(int.getText()));
             return;
         }
-        if (ctx.IDENTIFIER()) {
+        if (identifier) {
             // TODO: Implement retrieving variable value
-            throw new Error(`Identifier not implemented: ${ctx.IDENTIFIER().getText()}`);
+            throw new Error(`Identifier not implemented: ${identifier.getText()}`);
         }
-        if (ctx.arithExpr())
-            return this.visitArithExpr(ctx.arithExpr());
-        if (ctx.logicExpr())
-            return this.visitLogicExpr(ctx.logicExpr());
-        if (ctx.fnCall())
-            return this.visitFnCall(ctx.fnCall());
+        if (arithExprCtx)
+            return this.visitArithExpr(arithExprCtx);
+        if (logicExprCtx)
+            return this.visitLogicExpr(logicExprCtx);
+        if (fnCallCtx)
+            return this.visitFnCall(fnCallCtx);
+        if (vectorExprCtx)
+            return this.visitVectorExpr(vectorExprCtx);
     }
     visitArithExpr(ctx) {
         console.log("Visiting ArithExpr");
-        if (ctx.INT()) {
-            this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(parseInt(ctx.INT().getText()));
+        const int = ctx.INT();
+        const identifier = ctx.IDENTIFIER();
+        const innerCtx = ctx._inner;
+        const opText = ctx._op?.text;
+        const leftCtx = ctx._left;
+        const rightCtx = ctx._right;
+        if (int) {
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(parseInt(int.getText()));
             return;
         }
-        if (ctx.IDENTIFIER()) {
+        if (identifier) {
             // TODO: Implement retrieving variable value
-            throw new Error(`Identifier not implemented: ${ctx.IDENTIFIER().getText()}`);
+            throw new Error(`Identifier not implemented: ${identifier.getText()}`);
         }
-        if (ctx._inner)
-            return this.visitArithExpr(ctx._inner);
-        if (ctx._op && ctx._op.text === "-" && !ctx._left && ctx.arithExpr()) {
+        if (innerCtx)
+            return this.visitArithExpr(innerCtx);
+        if (opText === "-" && !leftCtx && rightCtx) {
             // Unary minus
-            const right = ctx.arithExpr();
-            for (let expr of right) {
-                this.visitArithExpr(expr);
-            }
+            this.visitArithExpr(rightCtx);
             this.instrs[this.wc++] = (0, RustLiteCompiler_1.unaryOperation)("-");
             return;
         }
-        if (ctx._left && ctx._right && ctx._op) {
+        if (leftCtx && rightCtx && opText) {
             // Binary operation
-            this.visitArithExpr(ctx._left);
-            this.visitArithExpr(ctx._right);
-            this.instrs[this.wc++] = (0, RustLiteCompiler_1.binaryOperation)(ctx._op.text);
+            this.visitArithExpr(leftCtx);
+            this.visitArithExpr(rightCtx);
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.binaryOperation)(opText);
             return;
         }
     }
     visitLogicExpr(ctx) {
         console.log("Visiting LogicExpr");
-        if (ctx.BOOL()) {
-            this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(ctx.BOOL().getText() === "true");
+        const bool = ctx.BOOL();
+        const identifier = ctx.IDENTIFIER();
+        const innerCtx = ctx._inner;
+        const arithLeftCtx = ctx._arithLeft;
+        const arithRightCtx = ctx._arithRight;
+        const opText = ctx._op?.text;
+        const leftCtx = ctx._left;
+        const rightCtx = ctx._right;
+        if (bool) {
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(bool.getText() === "true");
             return;
         }
-        if (ctx.IDENTIFIER()) {
+        if (identifier) {
             // TODO: Implement retrieving variable value
-            throw new Error(`Identifier not implemented: ${ctx.IDENTIFIER().getText()}`);
+            throw new Error(`Identifier not implemented: ${identifier.getText()}`);
         }
-        if (ctx._inner)
-            return this.visitLogicExpr(ctx._inner);
-        if (ctx._arithLeft && ctx._arithRight && ctx._op) {
+        if (innerCtx)
+            return this.visitLogicExpr(innerCtx);
+        if (arithLeftCtx && arithRightCtx && opText) {
             // Comparison operation
-            this.visitArithExpr(ctx._arithLeft);
-            this.visitArithExpr(ctx._arithRight);
-            this.instrs[this.wc++] = (0, RustLiteCompiler_1.binaryOperation)(ctx._op.text);
+            this.visitArithExpr(arithLeftCtx);
+            this.visitArithExpr(arithRightCtx);
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.binaryOperation)(opText);
             return;
         }
-        if (ctx._op && ctx._op.text === "!" && !ctx._left) {
+        if (opText === "!" && !leftCtx && rightCtx) {
             // Unary negation
-            this.visitLogicExpr(ctx._right);
+            this.visitLogicExpr(rightCtx);
             this.instrs[this.wc++] = (0, RustLiteCompiler_1.unaryOperation)("!");
             return;
         }
-        if (ctx._left && ctx._right && ctx._op) {
+        if (leftCtx && rightCtx && opText) {
             // Binary operation
-            this.visitLogicExpr(ctx._left);
-            this.visitLogicExpr(ctx._right);
-            this.instrs[this.wc++] = (0, RustLiteCompiler_1.binaryOperation)(ctx._op.text);
+            this.visitLogicExpr(leftCtx);
+            this.visitLogicExpr(rightCtx);
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.binaryOperation)(opText);
             return;
         }
     }
     visitStmt(ctx) {
         console.log("Visiting Stmt");
-        if (ctx.exprStmt())
-            return this.visitExprStmt(ctx.exprStmt());
-        if (ctx.declareStmt())
-            return this.visitDeclareStmt(ctx.declareStmt());
-        if (ctx.condStmt())
-            return this.visitCondStmt(ctx.condStmt());
-        if (ctx.whileStmt())
-            return this.visitWhileStmt(ctx.whileStmt());
-        if (ctx.fnDeclareStmt())
-            return this.visitFnDeclareStmt(ctx.fnDeclareStmt());
-        if (ctx.returnStmt())
-            return this.visitReturnStmt(ctx.returnStmt());
-        if (ctx.block())
-            return this.visitBlock(ctx.block());
+        const exprStmtCtx = ctx.exprStmt();
+        const declareStmtCtx = ctx.declareStmt();
+        const condStmtCtx = ctx.condStmt();
+        const whileStmtCtx = ctx.whileStmt();
+        const fnDeclareStmtCtx = ctx.fnDeclareStmt();
+        const returnStmtCtx = ctx.returnStmt();
+        const blockCtx = ctx.block();
+        if (exprStmtCtx)
+            return this.visitExprStmt(exprStmtCtx);
+        if (declareStmtCtx)
+            return this.visitDeclareStmt(declareStmtCtx);
+        if (condStmtCtx)
+            return this.visitCondStmt(condStmtCtx);
+        if (whileStmtCtx)
+            return this.visitWhileStmt(whileStmtCtx);
+        if (fnDeclareStmtCtx)
+            return this.visitFnDeclareStmt(fnDeclareStmtCtx);
+        if (returnStmtCtx)
+            return this.visitReturnStmt(returnStmtCtx);
+        if (blockCtx)
+            return this.visitBlock(blockCtx);
     }
     visitBlock(ctx) {
         console.log("Visiting Block");
@@ -148,6 +183,10 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     visitBlockContent(ctx) {
         console.log("Visiting BlockContent");
         const stmts = ctx.stmt();
+        // TODO: Get num of locals from the context
+        const [_, names] = this.scanForLocalVars(ctx);
+        const numLocals = names.length;
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.enterScope)(numLocals);
         for (let stmt of stmts) {
             if (!stmt)
                 continue;
@@ -161,18 +200,50 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         }
         if (ctx._finalExpr) {
             this.visitExpr(ctx._finalExpr);
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.reset)();
         }
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.exitScope)();
+    }
+    scanForLocalVars(ctx) {
+        console.log("Visiting BlockContent");
+        const stmts = ctx.stmt();
+        const types = [];
+        const names = [];
+        for (let stmt of stmts) {
+            if (!stmt)
+                continue;
+            const declareStmt = stmt.declareStmt();
+            const fnDeclareStmt = stmt.fnDeclareStmt();
+            if (declareStmt) {
+                const type = declareStmt.type();
+                const name = declareStmt.IDENTIFIER();
+                if (type && name) {
+                    types.push(type.getText());
+                    names.push(name.getText());
+                }
+            }
+            if (fnDeclareStmt) {
+                const fnName = fnDeclareStmt.IDENTIFIER();
+                const retType = fnDeclareStmt.returnType();
+                if (fnName && retType) {
+                    types.push(retType.getText());
+                    names.push(fnName.getText());
+                }
+            }
+        }
+        return [types, names];
     }
     visitExprStmt(ctx) {
         console.log("Visiting ExprStmt");
-        if (ctx.expr())
-            return this.visit(ctx.expr());
+        const exprCtx = ctx.expr();
+        if (exprCtx)
+            return this.visitExpr(exprCtx);
     }
     visitDeclareStmt(ctx) {
         console.log("Visiting DeclareStmt");
-        const type = ctx.type(); // TODO: Do type checking if have time
+        const typeCtx = ctx.type(); // TODO: Do type checking if have time
         const isMutable = ctx.MUT() ? true : false;
-        const name = ctx.IDENTIFIER().getText();
+        const name = ctx.IDENTIFIER()?.getText();
         const value = ctx.expr();
         if (value)
             this.visitExpr(value);
@@ -197,11 +268,12 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         return;
     }
     processParam(ctx) {
-        if (!ctx.type() || !ctx.IDENTIFIER()) {
+        const identifier = ctx.IDENTIFIER();
+        const typeCtx = ctx.type();
+        if (!typeCtx || !identifier)
             throw new Error("Invalid parameter");
-        }
-        const type = ctx.type().getText();
-        const name = ctx.IDENTIFIER().getText();
+        const type = typeCtx.getText();
+        const name = identifier.getText();
         return [type, name];
     }
     processParamList(ctx) {
@@ -228,27 +300,40 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     }
     processReturnTypes(ctx) {
         console.log("Visiting ReturnTypes");
-        if (!ctx || !ctx.type())
+        const typeCtx = ctx.type();
+        if (!ctx || !typeCtx)
             return "void";
-        const type = ctx.type().getText();
+        const type = typeCtx.getText();
         return type;
     }
     visitReturnStmt(ctx) {
         console.log("Visiting ReturnStmt");
-        if (ctx.expr())
-            return this.visitExpr(ctx.expr());
+        const exprCtx = ctx.expr();
+        if (exprCtx)
+            return this.visitExpr(exprCtx);
     }
     visitFnDeclareStmt(ctx) {
         console.log("Visiting FnDeclareStmt");
-        const [types, names] = this.processParamList(ctx.paramList());
-        const returnType = this.processReturnType(ctx.returnType());
+        const identifier = ctx.IDENTIFIER();
+        const paramListCtx = ctx.paramList();
+        const blockCtx = ctx.block();
+        const returnTypeCtx = ctx.returnType();
+        if (!identifier || !blockCtx) {
+            throw new Error("Invalid function declaration");
+        }
+        const [types, names] = this.processParamList(paramListCtx);
+        let returnType = "void";
+        if (returnTypeCtx) {
+            returnType = this.processReturnType(returnTypeCtx);
+            // If return type is not provided, default to void
+        }
         if (types.length !== names.length) {
             throw new Error(`Parameter types and names do not match: ${types.length} != ${names.length}`);
         }
         this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadFunction)(this.wc + 1, names.length); // this.wc + 1 is after goto instr
         const gotoInstr = (0, RustLiteCompiler_1.jump)(0); // 0 is a placeholder
         this.instrs[this.wc++] = gotoInstr;
-        this.visitBlock(ctx.block());
+        this.visitBlock(blockCtx);
         this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(0); // TODO: Add null as supported type and return it
         this.instrs[this.wc++] = (0, RustLiteCompiler_1.reset)();
         gotoInstr.addr = this.wc; // Set the address of the jump instruction to the current instruction count which is after the function body
@@ -313,6 +398,10 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     defaultResult() {
         return;
     }
+    getCompiledInstructions() {
+        // Return readonly copy of the instructions
+        return Object.freeze(this.instrs);
+    }
 }
 class RustLiteEvaluator extends runner_1.BasicEvaluator {
     constructor(conductor) {
@@ -351,9 +440,9 @@ class RustLiteEvaluator extends runner_1.BasicEvaluator {
             // Evaluate the parsed tree
             this.visitor.visit(tree);
             console.log("Compiled instructions:");
-            console.log(this.visitor.instrs);
+            console.log(this.visitor.getCompiledInstructions());
             // Send the result to the REPL
-            this.conductor.sendOutput(`Result of expression: ${this.visitor.instrs}`);
+            this.conductor.sendOutput(`Result of expression: ${this.visitor.getCompiledInstructions()}`);
         }
         catch (error) {
             // Handle errors and send them to the REPL

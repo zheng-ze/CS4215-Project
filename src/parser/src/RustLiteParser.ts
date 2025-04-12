@@ -414,7 +414,7 @@ export class RustLiteParser extends antlr.Parser {
                 this.state = 108;
                 localContext._op = this.match(RustLiteParser.T__2);
                 this.state = 109;
-                this.arithExpr(5);
+                localContext._right = this.arithExpr(5);
                 }
                 break;
             case RustLiteParser.BOOL:
