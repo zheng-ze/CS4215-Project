@@ -8,19 +8,18 @@ import {
 import { word_size, max_words } from "./RustLiteTypes";
 
 export class RustLiteStack {
-  data: DataView;
-  sp: number; // Stack pointer
-  fp: number; // Frame pointer
+  private data: DataView;
+  private stackPointer: number = 0; // where the top of the stack is
+  private framePointer: number = 0; // where the current frame starts
 
   constructor() {
     const buffer = new ArrayBuffer(max_words * word_size);
     this.data = new DataView(buffer);
-    this.sp = 0;
   }
 
   // Get value at a specific word index (e.g., for debugging)
   get(index: number): number {
-    if (index < 0 || index >= this.sp) {
+    if (index < 0 || index >= this.stackPointer) {
       throw new Error(`Invalid read at index ${index}`);
     }
     return this.data.getFloat64(index * word_size, true);
@@ -28,40 +27,40 @@ export class RustLiteStack {
 
   // Push value to top of stack
   push(value: SUPPORTED_TYPES): void {
-    if (this.sp >= max_words) {
+    if (this.stackPointer >= max_words) {
       throw new Error("Stack overflow");
     }
 
     if (typeof value === "number") {
-      this.data.setFloat64(this.sp * word_size, value, true);
+      this.data.setFloat64(this.stackPointer * word_size, value, true);
     } else {
       //value is of type bool
-      this.data.setFloat64(this.sp * word_size, value ? 1 : 0, true);
+      this.data.setFloat64(this.stackPointer * word_size, value ? 1 : 0, true);
     }
-    this.sp++;
+    this.stackPointer++;
   }
 
   // Pop value from top of stack
   pop(): number {
-    if (this.sp <= 0) {
+    if (this.stackPointer <= 0) {
       throw new Error("Stack underflow");
     }
-    this.sp--;
-    return this.data.getFloat64(this.sp * word_size, true);
+    this.stackPointer--;
+    return this.data.getFloat64(this.stackPointer * word_size, true);
   }
 
   // Peek at top value without popping
   peek(): number {
-    if (this.sp <= 0) {
+    if (this.stackPointer <= 0) {
       throw new Error("Stack is empty");
     }
-    return this.data.getFloat64((this.sp - 1) * word_size, true);
+    return this.data.getFloat64((this.stackPointer - 1) * word_size, true);
   }
 
   // Debug print the whole stack
   dump(): void {
     const values = [];
-    for (let i = 0; i < this.sp; i++) {
+    for (let i = 0; i < this.stackPointer; i++) {
       values.push(this.get(i));
     }
     console.log("[Stack]", values);
@@ -69,8 +68,8 @@ export class RustLiteStack {
 
   // Add methods for stack frame management
   pushFrame(frameSize: number): void {
-    const oldFp = this.fp;
-    this.fp = this.sp;
+    const oldFp = this.framePointer;
+    this.framePointer = this.stackPointer;
     this.push(oldFp); // Store old frame pointer
     this.push(frameSize);
     // Reserve space for local variables
@@ -82,15 +81,19 @@ export class RustLiteStack {
   popFrame(): void {
     const frameSize = this.pop();
     const oldFp = this.pop();
-    this.sp = this.fp;
-    this.fp = oldFp;
+    this.stackPointer = this.framePointer;
+    this.framePointer = oldFp;
   }
 
   getLocal(offset: number): number {
-    return this.get(this.fp + offset + 2); // +2 for fp and frameSize
+    return this.get(this.framePointer + offset + 2); // +2 for fp and frameSize
   }
 
   setLocal(offset: number, value: number): void {
-    this.data.setFloat64((this.fp + offset + 2) * word_size, value, true);
+    this.data.setFloat64(
+      (this.framePointer + offset + 2) * word_size,
+      value,
+      true
+    );
   }
 }
