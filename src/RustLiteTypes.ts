@@ -3,6 +3,7 @@ export type SUPPORTED_TYPES = number | boolean;
 export const word_size = 8;
 export const node_size = 4;
 export const size_offset = 5;
+export const max_words = 2048;
 
 export enum instruction_type {
   LDC,

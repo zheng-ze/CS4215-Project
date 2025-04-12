@@ -18,6 +18,7 @@ import {
   node_size,
   size_offset,
   word_size,
+  max_words,
 } from "./RustLiteTypes";
 
 interface VirtualMachineMicrocode {
@@ -124,24 +125,82 @@ class Heap {
   }
 }
 
+class RuntimeStack {
+  data: DataView;
+  sp: number; // Stack pointer
+
+  constructor() {
+    const buffer = new ArrayBuffer(max_words * word_size);
+    this.data = new DataView(buffer);
+    this.sp = 0;
+  }
+
+  // Get value at a specific word index (e.g., for debugging)
+  get(index: number): number {
+    if (index < 0 || index >= this.sp) {
+      throw new Error(`Invalid read at index ${index}`);
+    }
+    return this.data.getFloat64(index * word_size, true);
+  }
+
+  // Push value to top of stack
+  push(value: SUPPORTED_TYPES): void {
+    if (this.sp >= max_words) {
+      throw new Error("Stack overflow");
+    }
+
+    if (typeof value === 'number') {
+      this.data.setFloat64(this.sp * word_size, value, true);
+    } else {
+      //value is of type bool
+      this.data.setFloat64(this.sp * word_size, value ? 1 : 0, true);
+    }
+    this.sp++;
+  }
+
+  // Pop value from top of stack
+  pop(): number {
+    if (this.sp <= 0) {
+      throw new Error("Stack underflow");
+    }
+    this.sp--;
+    return this.data.getFloat64(this.sp * word_size, true);
+  }
+
+  // Peek at top value without popping
+  peek(): number {
+    if (this.sp <= 0) {
+      throw new Error("Stack is empty");
+    }
+    return this.data.getFloat64((this.sp - 1) * word_size, true);
+  }
+
+  // Debug print the whole stack
+  dump(): void {
+    const values = [];
+    for (let i = 0; i < this.sp; i++) {
+      values.push(this.get(i));
+    }
+    console.log("[Stack]", values);
+  }
+}
+
 interface VirtualMachine<T> {
   microcode: VirtualMachineMicrocode;
 
-  stack: T[];
+  stack: RuntimeStack;
   heap: Heap;
   pc: number;
   e: number;
-  rts: number[];
 
   instrs: instruction[];
 }
 
 export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
-  stack: SUPPORTED_TYPES[];
+  stack: RuntimeStack; // Combined stack for values and return addresses
   heap: Heap;
   pc: number;
   e: number;
-  rts: number[];
 
   instrs: instruction[];
 
@@ -164,43 +223,47 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       }
     }
 
-    return this.address_to_JS_value(peek(this.stack, 0) as number);
+    return this.address_to_JS_value(this.stack.peek());
   }
 
   reset(): void {
-    this.stack = [];
+    this.stack = new RuntimeStack();
     this.heap = new Heap(100);
     this.pc = 0;
     this.e = 0;
-    this.rts = [];
   }
 
   microcode: VirtualMachineMicrocode = {
     [instruction_type.LDC]: (instr: instruction) => {
       const ldc = instr as LDC;
-      const addr = this.JS_value_to_address(ldc.val);
-      push(this.stack, addr);
+      if (typeof ldc.val === 'number' || typeof ldc.val === 'boolean') {
+        // Store primitives directly on the stack
+        this.stack.push(ldc.val);
+      } else {
+        const addr = this.JS_value_to_address(ldc.val);
+        this.stack.push(addr);
+      }
     },
     [instruction_type.UNOP]: (instr: instruction) => {
       const unop = instr as UNOP;
-      const arg = this.stack.pop() as number;
+      const arg = this.stack.pop();
       const result = this.apply_unop(unop.sym, arg);
-      push(this.stack, result);
+      this.stack.push(result);
     },
     [instruction_type.BINOP]: (instr: instruction) => {
       const binop = instr as BINOP;
-      const right = this.stack.pop() as number;
-      const left = this.stack.pop() as number;
+      const right = this.stack.pop();
+      const left = this.stack.pop();
       const result = this.apply_binop(binop.sym, left, right);
-      push(this.stack, result);
+      this.stack.push(result);
     },
     [instruction_type.POP]: (instr: instruction) => {
       this.stack.pop();
     },
     [instruction_type.JOF]: (instr: instruction) => {
       const jof = instr as JOF;
-      const condition = this.stack.pop() as number;
-      if (this.address_to_JS_value(condition) === false) {
+      const condition = this.stack.pop();
+      if (condition === 0) {
         this.pc = jof.addr;
       }
     },
@@ -211,7 +274,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     [instruction_type.ENTER_SCOPE]: (instr: instruction) => {
       const enter = instr as ENTER_SCOPE;
       const blockframe_addr = this.allocate_Blockframe(this.e);
-      this.rts.push(blockframe_addr);
+      this.stack.push(blockframe_addr);
       const frame_addr = this.allocate_Environment(enter.num);
       this.e = this.environment_extend(frame_addr, this.e);
       for (let i = 0; i < enter.num; i++) {
@@ -219,38 +282,41 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       }
     },
     [instruction_type.EXIT_SCOPE]: (instr: instruction) => {
-      const frame_addr = this.get_blockframe_env(this.rts.pop());
+      const frame_addr = this.get_blockframe_env(this.stack.pop());
       this.e = frame_addr;
     },
     [instruction_type.LD]: (instr: instruction) => {
       const ld = instr as LD;
-      const valueAddr = this.get_Environment_value(this.e, ld.pos);
-      push(this.stack, valueAddr);
+      const value = this.get_Environment_value(this.e, ld.pos);
+      this.stack.push(value);
     },
     [instruction_type.ASSIGN]: (instr: instruction) => {
       const assign = instr as ASSIGN;
-      const valueAddr = peek(this.stack, 0) as number;
-      this.set_Environment_value(this.e, assign.pos, valueAddr);
+      const value = this.stack.peek();
+      this.set_Environment_value(this.e, assign.pos, value);
     },
     [instruction_type.LDF]: (instr: instruction) => {
       const ldf = instr as LDF;
       const addr = this.allocate_Closure(ldf.arity, ldf.addr, this.e);
-      push(this.stack, addr);
+      this.stack.push(addr);
     },
     [instruction_type.CALL]: (instr: instruction) => {
       const call = instr as CALL;
       const arity = call.arity;
-      const fun = peek(this.stack, arity) as number;
+      
+      const args = new Array(arity);
+      for (let i = arity - 1; i >= 0; i--) {
+        args[i] = this.stack.pop();
+      }
+      const fun = this.stack.pop();
 
       const new_e = this.allocate_Environment(arity);
-      for (let i = arity - 1; i >= 0; i--) {
-        const arg = this.stack.pop() as number;
-        this.heap.set_child(this.e, i, arg);
+      for (let i = 0; i < arity; i++) {
+        this.heap.set_child(new_e, i, args[i]);
       }
-      this.stack.pop(); // pop the function
 
       const callframe_addr = this.allocate_Callframe(this.e, this.pc);
-      this.rts.push(callframe_addr);
+      this.stack.push(callframe_addr);
 
       const fun_addr = this.get_closure_env(fun);
       this.e = this.environment_extend(new_e, fun_addr);
@@ -261,15 +327,16 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     [instruction_type.TAIL_CALL]: (instr: instruction) => {
       const tail_call = instr as TAIL_CALL;
       const arity = tail_call.arity;
-      const fun = peek(this.stack, arity) as number;
-
+      
+      const args = new Array(arity);
       for (let i = arity - 1; i >= 0; i--) {
-        const arg = this.stack.pop() as number;
-        this.heap.set_child(this.e, i, arg);
+        args[i] = this.stack.pop();
       }
-      this.stack.pop(); // pop the function
+      const fun = this.stack.pop();
 
-      //don't push on RTS here
+      for (let i = 0; i < arity; i++) {
+        this.heap.set_child(this.e, i, args[i]);
+      }
 
       const fun_addr = this.get_closure_env(fun);
       this.e = fun_addr;
@@ -280,7 +347,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     [instruction_type.RESET]: (instr: instruction) => {
       const reset = instr as RESET;
       this.pc--;
-      const top_frame = this.rts.pop();
+      const top_frame = this.stack.pop();
       if (this.is_Callframe(top_frame)) {
         this.e = this.get_callframe_env(top_frame);
         this.pc = this.get_callframe_pc(top_frame);
@@ -453,11 +520,13 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
   private JS_value_to_address(val: SUPPORTED_TYPES): number {
     if (typeof val === "number") {
-      return this.allocateNumber(val);
+      this.stack.push(val);
+      return this.stack.sp - 1;
     }
 
     if (typeof val === "boolean") {
-      return this.allocate_Bool(val);
+      this.stack.push(val ? 1 : 0);
+      return this.stack.sp - 1;
     }
 
     throw new Error(`Unsupported type: ${typeof val}`);
