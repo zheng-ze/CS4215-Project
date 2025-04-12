@@ -24,7 +24,7 @@ export class RustLiteStack {
   }
 
   // Get value at a specific word index (e.g., for debugging)
-  get(index: number): number {
+  public get(index: number): number {
     if (index < 0 || index >= this.stackPointer) {
       throw new Error(`Invalid read at index ${index}`);
     }
@@ -32,22 +32,23 @@ export class RustLiteStack {
   }
 
   // Push value to top of stack
-  push(value: SUPPORTED_TYPES): void {
+  public push(value: SUPPORTED_TYPES): number {
     if (this.stackPointer >= max_words) {
       throw new Error("Stack overflow");
     }
 
+    // TODO: Handle pointers to heap
     if (typeof value === "number") {
       this.data.setFloat64(this.stackPointer * word_size, value, true);
     } else {
       //value is of type bool
       this.data.setFloat64(this.stackPointer * word_size, value ? 1 : 0, true);
     }
-    this.stackPointer++;
+    return this.stackPointer++;
   }
 
   // Pop value from top of stack
-  pop(): number {
+  public pop(): number {
     if (this.stackPointer <= 0) {
       throw new Error("Stack underflow");
     }
@@ -56,7 +57,7 @@ export class RustLiteStack {
   }
 
   // Peek at top value without popping
-  peek(): number {
+  public peek(): number {
     if (this.stackPointer <= 0) {
       throw new Error("Stack is empty");
     }
@@ -64,7 +65,7 @@ export class RustLiteStack {
   }
 
   // Debug print the whole stack
-  dump(): void {
+  public dump(): void {
     const values = [];
     for (let i = 0; i < this.stackPointer; i++) {
       values.push(this.get(i));
@@ -73,7 +74,7 @@ export class RustLiteStack {
   }
 
   // Add methods for stack frame management
-  pushFrame(frameSize: number): void {
+  public pushFrame(frameSize: number): void {
     if (frameSize <= 0) {
       throw new Error("Frame size must be positive");
     }
@@ -92,7 +93,7 @@ export class RustLiteStack {
     this.stackPointer = this.framePointer;
   }
 
-  popFrame(): void {
+  public popFrame(): void {
     if (this.frames.length === 0) {
       throw new Error("No frame to pop");
     }
@@ -102,7 +103,7 @@ export class RustLiteStack {
   }
 
   getLocal(offset: number): number {
-    return this.get(this.framePointer + offset); // +2 for fp and frameSize
+    return this.get(this.framePointer + offset);
   }
 
   setLocal(offset: number, value: number): void {

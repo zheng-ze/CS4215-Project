@@ -20,7 +20,7 @@ import {
   word_size,
   max_words,
 } from "./RustLiteTypes";
-import { RuntimeStack } from "./RustLiteStack";
+import { RustLiteStack } from "./RustLiteStack";
 
 interface VirtualMachineMicrocode {
   [key: string]: (instr: instruction) => void;
@@ -129,7 +129,7 @@ class Heap {
 interface VirtualMachine<T> {
   microcode: VirtualMachineMicrocode;
 
-  stack: RuntimeStack;
+  stack: RustLiteStack;
   heap: Heap;
   pc: number;
   e: number;
@@ -138,7 +138,7 @@ interface VirtualMachine<T> {
 }
 
 export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
-  stack: RuntimeStack; // Combined stack for values and return addresses
+  stack: RustLiteStack; // Combined stack for values and return addresses
   heap: Heap;
   pc: number;
   e: number;
@@ -168,7 +168,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   }
 
   reset(): void {
-    this.stack = new RuntimeStack();
+    this.stack = new RustLiteStack();
     this.heap = new Heap(100);
     this.pc = 0;
     this.e = 0;
@@ -466,13 +466,11 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
   private JS_value_to_address(val: SUPPORTED_TYPES): number {
     if (typeof val === "number") {
-      this.stack.push(val);
-      return this.stack.sp - 1;
+      return this.stack.push(val);
     }
 
     if (typeof val === "boolean") {
-      this.stack.push(val ? 1 : 0);
-      return this.stack.sp - 1;
+      return this.stack.push(val ? 1 : 0);
     }
 
     throw new Error(`Unsupported type: ${typeof val}`);
