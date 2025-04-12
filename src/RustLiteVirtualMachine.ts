@@ -127,7 +127,8 @@ class Heap {
 
 class RuntimeStack {
   data: DataView;
-  sp: number; // Stack pointer
+  sp: number;  // Stack pointer
+  fp: number;  // Frame pointer
 
   constructor() {
     const buffer = new ArrayBuffer(max_words * word_size);
@@ -186,31 +187,29 @@ class RuntimeStack {
 
   // Add methods for stack frame management
   pushFrame(frameSize: number): void {
-    // Store the frame pointer and size
-    this.push(this.sp);  // Store old frame pointer
+    const oldFp = this.fp;
+    this.fp = this.sp;
+    this.push(oldFp);  // Store old frame pointer
     this.push(frameSize);
     // Reserve space for local variables
     for (let i = 0; i < frameSize; i++) {
-      this.push(0);  // Initialize locals to 0
+      this.push(0);
     }
   }
 
   popFrame(): void {
     const frameSize = this.pop();
     const oldFp = this.pop();
-    // Restore stack pointer to before frame
-    this.sp = oldFp;
+    this.sp = this.fp;
+    this.fp = oldFp;
   }
 
-  // Add methods for accessing local variables within the current frame
   getLocal(offset: number): number {
-    const framePtr = this.get(this.sp - 1);
-    return this.get(framePtr + offset);
+    return this.get(this.fp + offset + 2);  // +2 for fp and frameSize
   }
 
   setLocal(offset: number, value: number): void {
-    const framePtr = this.get(this.sp - 1);
-    this.data.setFloat64((framePtr + offset) * word_size, value, true);
+    this.data.setFloat64((this.fp + offset + 2) * word_size, value, true);
   }
 }
 
@@ -330,7 +329,10 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       const call = instr as CALL;
       const arity = call.arity;
       
-      // Create new stack frame for function call
+      // Save current execution context on stack
+      this.stack.push(this.pc);  // Return address
+      
+      // Create new stack frame for function parameters
       this.stack.pushFrame(arity);
       
       // Pop arguments and store in new frame
@@ -340,39 +342,49 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       }
       
       const fun = this.stack.pop();
-      // Save return address
-      this.stack.push(this.pc);
       
-      // Jump to function
-      this.pc = this.get_closure_pc(fun);
+      // Jump to function code
+      if (this.is_Closure(fun)) {
+        this.pc = this.get_closure_pc(fun);
+        this.e = this.get_closure_env(fun);
+      } else {
+        throw new Error("Attempting to call a non-function value");
+      }
     },
 
     [instruction_type.RESET]: (instr: instruction) => {
-      // Restore return address
-      this.pc = this.stack.pop();
-      // Pop function's stack frame
-      this.stack.popFrame();
+      this.stack.popFrame();  // Remove current frame
+      this.pc = this.stack.pop();  // Restore return address
     },
     
     [instruction_type.TAIL_CALL]: (instr: instruction) => {
       const tail_call = instr as TAIL_CALL;
       const arity = tail_call.arity;
       
+      // Reuse current frame for tail call optimization
       const args = new Array(arity);
       for (let i = arity - 1; i >= 0; i--) {
         args[i] = this.stack.pop();
       }
       const fun = this.stack.pop();
-
+      
+      // Reuse the current frame instead of creating a new one
       for (let i = 0; i < arity; i++) {
-        this.heap.set_child(this.e, i, args[i]);
+        this.stack.setLocal(i, args[i]);
       }
-
-      const fun_addr = this.get_closure_env(fun);
-      this.e = fun_addr;
-
-      const new_pc = this.get_closure_pc(fun);
-      this.pc = new_pc;
+      
+      if (this.is_Closure(fun)) {
+        this.pc = this.get_closure_pc(fun);
+        this.e = this.get_closure_env(fun);
+      } else {
+        throw new Error("Attempting to call a non-function value");
+      }
+    },
+    
+    [instruction_type.LDF]: (instr: instruction) => {
+      const ldf = instr as LDF;
+      const closure_addr = this.allocate_Closure(ldf.arity, ldf.addr, this.e);
+      this.stack.push(closure_addr);
     }
   };
 
