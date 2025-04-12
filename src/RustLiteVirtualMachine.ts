@@ -566,8 +566,14 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     "+": (left: number, right: number) => left + right,
     "-": (left: number, right: number) => left - right,
     "*": (left: number, right: number) => left * right,
-    "/": (left: number, right: number) => left / right,
-    "%": (left: number, right: number) => left % right,
+    "/": (left: number, right: number) => {
+      if (right === 0) throw new Error("Division by zero");
+      return left / right;
+    },
+    "%": (left: number, right: number) => {
+      if (right === 0) throw new Error("Modulo by zero");
+      return left % right;
+    },
     "==": (left: SUPPORTED_TYPES, right: SUPPORTED_TYPES) => left === right,
     "!=": (left: SUPPORTED_TYPES, right: SUPPORTED_TYPES) => left !== right,
     "<": (left: number, right: number) => left < right,
@@ -580,12 +586,13 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
   private apply_binop(
     op: string,
-    leftAddr: number,
-    rightAddr: number
-  ): SUPPORTED_TYPES {
-    return this.binop_microcode[op](
-      this.address_to_JS_value(leftAddr),
-      this.address_to_JS_value(rightAddr)
-    );
+    left: number,
+    right: number
+  ): number {
+    const operation = this.binop_microcode[op];
+    if (!operation) {
+      throw new Error(`Unknown binary operator: ${op}`);
+    }
+    return operation(left, right);
   }
 }
