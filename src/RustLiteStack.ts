@@ -7,10 +7,16 @@ import {
 
 import { word_size, max_words } from "./RustLiteTypes";
 
+interface StackFrame {
+  basePointer: number;
+  frameSize: number;
+}
+
 export class RustLiteStack {
   private data: DataView;
   private stackPointer: number = 0; // where the top of the stack is
   private framePointer: number = 0; // where the current frame starts
+  private frames: StackFrame[] = []; // stack frames
 
   constructor() {
     const buffer = new ArrayBuffer(max_words * word_size);
@@ -68,32 +74,38 @@ export class RustLiteStack {
 
   // Add methods for stack frame management
   pushFrame(frameSize: number): void {
-    const oldFp = this.framePointer;
-    this.framePointer = this.stackPointer;
-    this.push(oldFp); // Store old frame pointer
-    this.push(frameSize);
-    // Reserve space for local variables
-    for (let i = 0; i < frameSize; i++) {
-      this.push(0);
+    if (frameSize <= 0) {
+      throw new Error("Frame size must be positive");
     }
+
+    if (frameSize + this.stackPointer >= max_words) {
+      throw new Error("Stack overflow");
+    }
+
+    const newFrame: StackFrame = {
+      basePointer: this.framePointer, // Store old frame pointer
+      frameSize: frameSize,
+    };
+
+    this.frames.push(newFrame);
+    this.framePointer = this.stackPointer;
+    this.stackPointer = this.framePointer;
   }
 
   popFrame(): void {
-    const frameSize = this.pop();
-    const oldFp = this.pop();
+    if (this.frames.length === 0) {
+      throw new Error("No frame to pop");
+    }
+    const prevFrame: StackFrame = this.frames.pop();
     this.stackPointer = this.framePointer;
-    this.framePointer = oldFp;
+    this.framePointer = prevFrame.basePointer; // Restore old frame pointer
   }
 
   getLocal(offset: number): number {
-    return this.get(this.framePointer + offset + 2); // +2 for fp and frameSize
+    return this.get(this.framePointer + offset); // +2 for fp and frameSize
   }
 
   setLocal(offset: number, value: number): void {
-    this.data.setFloat64(
-      (this.framePointer + offset + 2) * word_size,
-      value,
-      true
-    );
+    this.data.setFloat64((this.framePointer + offset) * word_size, value, true);
   }
 }
