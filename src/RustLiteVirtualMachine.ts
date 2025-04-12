@@ -20,6 +20,7 @@ import {
   word_size,
   max_words,
 } from "./RustLiteTypes";
+import { RuntimeStack } from "./RustLiteStack";
 
 interface VirtualMachineMicrocode {
   [key: string]: (instr: instruction) => void;
@@ -125,94 +126,6 @@ class Heap {
   }
 }
 
-class RuntimeStack {
-  data: DataView;
-  sp: number;  // Stack pointer
-  fp: number;  // Frame pointer
-
-  constructor() {
-    const buffer = new ArrayBuffer(max_words * word_size);
-    this.data = new DataView(buffer);
-    this.sp = 0;
-  }
-
-  // Get value at a specific word index (e.g., for debugging)
-  get(index: number): number {
-    if (index < 0 || index >= this.sp) {
-      throw new Error(`Invalid read at index ${index}`);
-    }
-    return this.data.getFloat64(index * word_size, true);
-  }
-
-  // Push value to top of stack
-  push(value: SUPPORTED_TYPES): void {
-    if (this.sp >= max_words) {
-      throw new Error("Stack overflow");
-    }
-
-    if (typeof value === 'number') {
-      this.data.setFloat64(this.sp * word_size, value, true);
-    } else {
-      //value is of type bool
-      this.data.setFloat64(this.sp * word_size, value ? 1 : 0, true);
-    }
-    this.sp++;
-  }
-
-  // Pop value from top of stack
-  pop(): number {
-    if (this.sp <= 0) {
-      throw new Error("Stack underflow");
-    }
-    this.sp--;
-    return this.data.getFloat64(this.sp * word_size, true);
-  }
-
-  // Peek at top value without popping
-  peek(): number {
-    if (this.sp <= 0) {
-      throw new Error("Stack is empty");
-    }
-    return this.data.getFloat64((this.sp - 1) * word_size, true);
-  }
-
-  // Debug print the whole stack
-  dump(): void {
-    const values = [];
-    for (let i = 0; i < this.sp; i++) {
-      values.push(this.get(i));
-    }
-    console.log("[Stack]", values);
-  }
-
-  // Add methods for stack frame management
-  pushFrame(frameSize: number): void {
-    const oldFp = this.fp;
-    this.fp = this.sp;
-    this.push(oldFp);  // Store old frame pointer
-    this.push(frameSize);
-    // Reserve space for local variables
-    for (let i = 0; i < frameSize; i++) {
-      this.push(0);
-    }
-  }
-
-  popFrame(): void {
-    const frameSize = this.pop();
-    const oldFp = this.pop();
-    this.sp = this.fp;
-    this.fp = oldFp;
-  }
-
-  getLocal(offset: number): number {
-    return this.get(this.fp + offset + 2);  // +2 for fp and frameSize
-  }
-
-  setLocal(offset: number, value: number): void {
-    this.data.setFloat64((this.fp + offset + 2) * word_size, value, true);
-  }
-}
-
 interface VirtualMachine<T> {
   microcode: VirtualMachineMicrocode;
 
@@ -264,7 +177,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   microcode: VirtualMachineMicrocode = {
     [instruction_type.LDC]: (instr: instruction) => {
       const ldc = instr as LDC;
-      if (typeof ldc.val === 'number' || typeof ldc.val === 'boolean') {
+      if (typeof ldc.val === "number" || typeof ldc.val === "boolean") {
         // Store primitives directly on the stack
         this.stack.push(ldc.val);
       } else {
@@ -328,21 +241,21 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     [instruction_type.CALL]: (instr: instruction) => {
       const call = instr as CALL;
       const arity = call.arity;
-      
+
       // Save current execution context on stack
-      this.stack.push(this.pc);  // Return address
-      
+      this.stack.push(this.pc); // Return address
+
       // Create new stack frame for function parameters
       this.stack.pushFrame(arity);
-      
+
       // Pop arguments and store in new frame
       for (let i = arity - 1; i >= 0; i--) {
         const arg = this.stack.pop();
         this.stack.setLocal(i, arg);
       }
-      
+
       const fun = this.stack.pop();
-      
+
       // Jump to function code
       if (this.is_Closure(fun)) {
         this.pc = this.get_closure_pc(fun);
@@ -353,26 +266,26 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     },
 
     [instruction_type.RESET]: (instr: instruction) => {
-      this.stack.popFrame();  // Remove current frame
-      this.pc = this.stack.pop();  // Restore return address
+      this.stack.popFrame(); // Remove current frame
+      this.pc = this.stack.pop(); // Restore return address
     },
-    
+
     [instruction_type.TAIL_CALL]: (instr: instruction) => {
       const tail_call = instr as TAIL_CALL;
       const arity = tail_call.arity;
-      
+
       // Reuse current frame for tail call optimization
       const args = new Array(arity);
       for (let i = arity - 1; i >= 0; i--) {
         args[i] = this.stack.pop();
       }
       const fun = this.stack.pop();
-      
+
       // Reuse the current frame instead of creating a new one
       for (let i = 0; i < arity; i++) {
         this.stack.setLocal(i, args[i]);
       }
-      
+
       if (this.is_Closure(fun)) {
         this.pc = this.get_closure_pc(fun);
         this.e = this.get_closure_env(fun);
@@ -380,12 +293,12 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
         throw new Error("Attempting to call a non-function value");
       }
     },
-    
+
     [instruction_type.LDF]: (instr: instruction) => {
       const ldf = instr as LDF;
       const closure_addr = this.allocate_Closure(ldf.arity, ldf.addr, this.e);
       this.stack.push(closure_addr);
-    }
+    },
   };
 
   // bool
@@ -596,11 +509,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     "||": (left: boolean, right: boolean) => left || right,
   };
 
-  private apply_binop(
-    op: string,
-    left: number,
-    right: number
-  ): number {
+  private apply_binop(op: string, left: number, right: number): number {
     const operation = this.binop_microcode[op];
     if (!operation) {
       throw new Error(`Unknown binary operator: ${op}`);
