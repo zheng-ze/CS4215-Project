@@ -166,8 +166,6 @@ class RustLiteVirtualMachine {
                 const arity = call.arity;
                 // Get function closure first
                 const fun = this.stack.pop();
-                // console.log(fun.toString(2));
-                // console.log(this.is_Closure(fun));
                 if (!this.is_Closure(fun)) {
                     throw new Error("Attempting to call a non-function value");
                 }
@@ -185,10 +183,10 @@ class RustLiteVirtualMachine {
                 this.e = this.get_closure_env(fun);
             },
             [RustLiteTypes_1.instruction_type.RESET]: (instr) => {
-                // this.stack.dump();
+                const returnVal = this.stack.pop();
                 this.stack.popFrame(); // Remove current frame
                 this.pc = this.stack.pop(); // Restore return address
-                // this.stack.dump();
+                this.stack.push(returnVal); // Push return value onto stack
             },
             [RustLiteTypes_1.instruction_type.TAIL_CALL]: (instr) => {
                 const tail_call = instr;

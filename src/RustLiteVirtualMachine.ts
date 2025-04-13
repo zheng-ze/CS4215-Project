@@ -297,8 +297,10 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     },
 
     [instruction_type.RESET]: (instr: instruction) => {
+      const returnVal = this.stack.pop();
       this.stack.popFrame(); // Remove current frame
       this.pc = this.stack.pop(); // Restore return address
+      this.stack.push(returnVal); // Push return value onto stack
     },
 
     [instruction_type.TAIL_CALL]: (instr: instruction) => {
