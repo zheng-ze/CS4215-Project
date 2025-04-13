@@ -41,7 +41,6 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         }
         // After processing all global elements, call main if it exists
         const mainAddr = this.functionTable.get("main");
-        console.log(`address of main: ${mainAddr}`);
         if (mainAddr !== undefined) {
             this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadFunction)(0, mainAddr); // Load the function
             this.instrs[this.wc++] = (0, RustLiteCompiler_1.call)(0); // Call main with 0 arguments
@@ -108,7 +107,13 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         }
         if (identifier) {
             // TODO: Implement retrieving variable value
-            throw new Error(`Identifier not implemented: ${identifier.getText()}`);
+            const name = identifier.getText();
+            const offset = this.currentScope.get(name);
+            if (offset === undefined) {
+                throw new Error(`Undefined variable: ${name}`);
+            }
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.load)(name);
+            // throw new Error(`Identifier not implemented: ${identifier.getText()}`);
         }
         if (innerCtx)
             return this.visitArithExpr(innerCtx);

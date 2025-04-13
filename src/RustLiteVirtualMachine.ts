@@ -275,8 +275,6 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
       // Get function closure first
       const fun = this.stack.pop();
-      // console.log(fun.toString(2));
-      // console.log(this.is_Closure(fun));
       if (!this.is_Closure(fun)) {
         throw new Error("Attempting to call a non-function value");
       }
@@ -299,10 +297,8 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     },
 
     [instruction_type.RESET]: (instr: instruction) => {
-      // this.stack.dump();
       this.stack.popFrame(); // Remove current frame
       this.pc = this.stack.pop(); // Restore return address
-      // this.stack.dump();
     },
 
     [instruction_type.TAIL_CALL]: (instr: instruction) => {

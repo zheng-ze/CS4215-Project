@@ -172,7 +172,13 @@ class RustLiteEvaluatorVisitor
 
     if (identifier) {
       // TODO: Implement retrieving variable value
-      throw new Error(`Identifier not implemented: ${identifier.getText()}`);
+      const name = identifier.getText();
+      const offset = this.currentScope.get(name);
+      if (offset === undefined) {
+        throw new Error(`Undefined variable: ${name}`);
+      }
+      this.instrs[this.wc++] = load(name);
+      // throw new Error(`Identifier not implemented: ${identifier.getText()}`);
     }
 
     if (innerCtx) return this.visitArithExpr(innerCtx);
