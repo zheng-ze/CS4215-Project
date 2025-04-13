@@ -475,6 +475,9 @@ class RustLiteEvaluatorVisitor
     }
 
     this.instrs[this.wc++] = loadFunction(names.length, this.wc + 1); // this.wc + 1 is after goto instr
+    if (fnName === "main") {
+      this.instrs[this.wc++] = done(); // Main function has no parameters
+    }
     const gotoInstr: GOTO = jump(0); // 0 is a placeholder
     this.instrs[this.wc++] = gotoInstr;
     this.visitBlock(blockCtx);

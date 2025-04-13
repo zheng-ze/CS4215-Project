@@ -384,6 +384,9 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
             throw new Error(`Parameter types and names do not match: ${types.length} != ${names.length}`);
         }
         this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadFunction)(names.length, this.wc + 1); // this.wc + 1 is after goto instr
+        if (fnName === "main") {
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.done)(); // Main function has no parameters
+        }
         const gotoInstr = (0, RustLiteCompiler_1.jump)(0); // 0 is a placeholder
         this.instrs[this.wc++] = gotoInstr;
         this.visitBlock(blockCtx);
@@ -500,12 +503,10 @@ class RustLiteEvaluator extends runner_1.BasicEvaluator {
             console.log(instructions);
             // Create and run VM with instructions
             const vm = new RustLiteVirtualMachine_1.RustLiteVirtualMachine([...instructions]);
-            // const result = vm.run();
-            // // Send both instructions and execution result to the REPL
-            // this.conductor.sendOutput(
-            //   `Compiled instructions: ${JSON.stringify(instructions, null, 2)}\n` +
-            //     `Execution result: ${result}`
-            // );
+            const result = vm.run();
+            // Send both instructions and execution result to the REPL
+            this.conductor.sendOutput(`Compiled instructions: ${JSON.stringify(instructions, null, 2)}\n` +
+                `Execution result: ${result}`);
         }
         catch (error) {
             // Handle errors and send them to the REPL
