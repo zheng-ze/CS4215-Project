@@ -6,21 +6,21 @@ export const size_offset = 5;
 export const max_words = 2048;
 
 export enum instruction_type {
-  LDC,
-  UNOP,
-  BINOP,
-  POP,
-  JOF,
-  GOTO,
-  ENTER_SCOPE,
-  EXIT_SCOPE,
-  LD,
-  ASSIGN,
-  LDF,
-  CALL,
-  TAIL_CALL,
-  RESET,
-  DONE,
+  LDC, // 0
+  UNOP, // 1
+  BINOP, // 2
+  POP, // 3
+  JOF, // 4
+  GOTO, // 5
+  ENTER_SCOPE, // 6
+  EXIT_SCOPE, // 7
+  LD, // 8
+  ASSIGN, // 9
+  LDF, // 10
+  CALL, // 11
+  TAIL_CALL, // 12
+  RESET, // 13
+  DONE, // 14
 }
 
 export interface Pair<T> {

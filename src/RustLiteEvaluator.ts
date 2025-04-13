@@ -99,15 +99,15 @@ class RustLiteEvaluatorVisitor
         loadConstant(0), // TODO: Add null as supported type and return it
       ];
     }
-    
+
     // After processing all global elements, call main if it exists
-    const mainAddr = this.functionTable.get('main');
+    const mainAddr = this.functionTable.get("main");
+    console.log(`address of main: ${mainAddr}`);
     if (mainAddr !== undefined) {
-      
-      this.instrs[this.wc++] = loadFunction(0, mainAddr);  // Load the function
-      this.instrs[this.wc++] = call(0);  // Call main with 0 arguments
+      this.instrs[this.wc++] = loadFunction(0, mainAddr); // Load the function
+      this.instrs[this.wc++] = call(0); // Call main with 0 arguments
     }
-    this.instrs[this.wc++] = done();  // End program execution
+    this.instrs[this.wc++] = done(); // End program execution
   }
 
   visitGlobalElement(ctx: GlobalElementContext): void {
@@ -274,7 +274,7 @@ class RustLiteEvaluatorVisitor
   visitBlockContent(ctx: BlockContentContext): void {
     // Save outer scope
     const outerScope = new Map(this.currentScope);
-    
+
     console.log("Visiting BlockContent");
     const stmts = ctx.stmt();
 
@@ -344,11 +344,11 @@ class RustLiteEvaluatorVisitor
     const isMutable = ctx.MUT() ? true : false;
     const name = ctx.IDENTIFIER()?.getText();
     if (!name) throw new Error("Variable declaration requires a name");
-    
+
     // Add variable to current scope
     const offset = this.currentScope.size;
     this.currentScope.set(name, offset);
-    
+
     const value = ctx.expr();
     if (value) {
       this.visitExpr(value);
@@ -356,7 +356,7 @@ class RustLiteEvaluatorVisitor
       // Default initialization
       this.instrs[this.wc++] = loadConstant(0);
     }
-    
+
     this.instrs[this.wc++] = assign(name, false);
     return;
   }
@@ -438,16 +438,16 @@ class RustLiteEvaluatorVisitor
     const identifier = ctx.IDENTIFIER();
     if (!identifier) throw new Error("Function declaration requires a name");
     const fnName = identifier.getText();
-    
+
     // Store function location in table
     this.functionTable.set(fnName, this.wc);
-    
+
     const [paramTypes, paramNames] = this.processParamList(ctx.paramList());
-    
+
     // Create new scope for function
     const oldScope = new Map(this.currentScope);
     this.currentScope.clear();
-    
+
     // Add parameters to scope
     paramNames.forEach((param, index) => {
       this.currentScope.set(param, index);
@@ -491,7 +491,7 @@ class RustLiteEvaluatorVisitor
     if (fnAddr === undefined) {
       throw new Error(`Undefined function: ${fnName}`);
     }
-    
+
     this.instrs[this.wc++] = loadConstant(fnAddr);
     const args = ctx.argList();
     if (args) {
@@ -624,17 +624,15 @@ export class RustLiteEvaluator extends BasicEvaluator {
       const instructions = this.visitor.getCompiledInstructions();
       console.log("Compiled instructions:");
       console.log(instructions);
-      
+
       // Create and run VM with instructions
       const vm = new RustLiteVirtualMachine([...instructions]);
       const result = vm.run();
 
-     
-
       // Send both instructions and execution result to the REPL
       this.conductor.sendOutput(
         `Compiled instructions: ${JSON.stringify(instructions, null, 2)}\n` +
-        `Execution result: ${result}`
+          `Execution result: ${result}`
       );
     } catch (error) {
       // Handle errors and send them to the REPL

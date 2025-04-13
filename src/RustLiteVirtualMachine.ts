@@ -114,6 +114,7 @@ class Heap {
   }
 
   getTag(address: number): HeapTag {
+    console.log(this.data.getInt8(address * word_size));
     return this.data.getInt8(address * word_size);
   }
 
@@ -167,6 +168,12 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     this.reset();
 
     while (this.instrs[this.pc].type !== instruction_type.DONE) {
+      console.log("PC:", this.pc);
+      console.log(
+        "Current instruction type:",
+        instruction_type[this.instrs[this.pc].type]
+      );
+      console.log("Instruction:", this.instrs[this.pc]);
       const instr = this.instrs[this.pc++];
 
       const microcode = this.microcode[instr.type];
@@ -182,7 +189,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   }
 
   reset(): void {
-    this.stack = new RustLiteStack();
+    this.stack.reset();
     this.heap = new Heap(100);
     this.pc = 0;
     this.e = 0;
@@ -267,6 +274,8 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
       // Get function closure first
       const fun = this.stack.pop();
+      // console.log(fun.toString(2));
+      // console.log(this.is_Closure(fun));
       if (!this.is_Closure(fun)) {
         throw new Error("Attempting to call a non-function value");
       }
@@ -355,6 +364,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   // note: currently bytes at offset 4 and 7 are not used;
   //   they could be used to increase pc and #children range
   private is_Closure(address: number): boolean {
+    console.log(address);
     return this.heap.getTag(address) === HeapTag.Closure;
   }
 

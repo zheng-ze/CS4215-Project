@@ -75,7 +75,10 @@ export class RustLiteStack {
 
   // Add methods for stack frame management
   public pushFrame(frameSize: number): void {
-    if (frameSize <= 0) {
+    console.log(
+      `Pushing frame with size: ${frameSize}, Stack pointer: ${this.stackPointer}`
+    );
+    if (frameSize < 0) {
       throw new Error("Frame size must be positive");
     }
 
@@ -97,16 +100,22 @@ export class RustLiteStack {
     if (this.frames.length === 0) {
       throw new Error("No frame to pop");
     }
-    const prevFrame: StackFrame = this.frames.pop();
+    const prevFrame: StackFrame = this.frames.pop()!;
     this.stackPointer = this.framePointer;
     this.framePointer = prevFrame.basePointer; // Restore old frame pointer
   }
 
-  getLocal(offset: number): number {
+  public getLocal(offset: number): number {
     return this.get(this.framePointer + offset);
   }
 
-  setLocal(offset: number, value: number): void {
+  public setLocal(offset: number, value: number): void {
     this.data.setFloat64((this.framePointer + offset) * word_size, value, true);
+  }
+
+  public reset(): void {
+    this.stackPointer = 0;
+    this.framePointer = 0;
+    this.frames = [];
   }
 }

@@ -6,11 +6,14 @@ const RustLiteParser_1 = require("./parser/src/RustLiteParser");
 const RustLiteCompiler_1 = require("./RustLiteCompiler");
 const runner_1 = require("conductor/dist/conductor/runner");
 const RustLiteLexer_1 = require("./parser/src/RustLiteLexer");
+const RustLiteVirtualMachine_1 = require("./RustLiteVirtualMachine");
 class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     constructor() {
         super(...arguments);
         this.wc = 0;
         this.instrs = [];
+        this.currentScope = new Map(); // Track variable offsets in current scope
+        this.functionTable = new Map(); // Track function addresses
     }
     visitProg(ctx) {
         console.log(`Visiting Program, text parsed: ${ctx.getText()}`);
@@ -36,6 +39,14 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
                 (0, RustLiteCompiler_1.loadConstant)(0), // TODO: Add null as supported type and return it
             ];
         }
+        // After processing all global elements, call main if it exists
+        const mainAddr = this.functionTable.get("main");
+        console.log(`address of main: ${mainAddr}`);
+        if (mainAddr !== undefined) {
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadFunction)(0, mainAddr); // Load the function
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.call)(0); // Call main with 0 arguments
+        }
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.done)(); // End program execution
     }
     visitGlobalElement(ctx) {
         console.log("Visiting GlobalElement");
@@ -66,8 +77,13 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
             return;
         }
         if (identifier) {
-            // TODO: Implement retrieving variable value
-            throw new Error(`Identifier not implemented: ${identifier.getText()}`);
+            const name = identifier.getText();
+            const offset = this.currentScope.get(name);
+            if (offset === undefined) {
+                throw new Error(`Undefined variable: ${name}`);
+            }
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.load)(name);
+            return;
         }
         if (arithExprCtx)
             return this.visitArithExpr(arithExprCtx);
@@ -125,8 +141,13 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
             return;
         }
         if (identifier) {
-            // TODO: Implement retrieving variable value
-            throw new Error(`Identifier not implemented: ${identifier.getText()}`);
+            const name = identifier.getText();
+            const offset = this.currentScope.get(name);
+            if (offset === undefined) {
+                throw new Error(`Undefined variable: ${name}`);
+            }
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.load)(name);
+            return;
         }
         if (innerCtx)
             return this.visitLogicExpr(innerCtx);
@@ -181,6 +202,8 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
             return this.visitBlockContent(ctx.blockContent());
     }
     visitBlockContent(ctx) {
+        // Save outer scope
+        const outerScope = new Map(this.currentScope);
         console.log("Visiting BlockContent");
         const stmts = ctx.stmt();
         // TODO: Get num of locals from the context
@@ -203,6 +226,8 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
             this.instrs[this.wc++] = (0, RustLiteCompiler_1.reset)();
         }
         this.instrs[this.wc++] = (0, RustLiteCompiler_1.exitScope)();
+        // Restore outer scope when exiting
+        this.currentScope = outerScope;
     }
     scanForLocalVars(ctx) {
         console.log("Visiting BlockContent");
@@ -241,14 +266,23 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     }
     visitDeclareStmt(ctx) {
         console.log("Visiting DeclareStmt");
-        const typeCtx = ctx.type(); // TODO: Do type checking if have time
+        const typeCtx = ctx.type();
         const isMutable = ctx.MUT() ? true : false;
         const name = ctx.IDENTIFIER()?.getText();
+        if (!name)
+            throw new Error("Variable declaration requires a name");
+        // Add variable to current scope
+        const offset = this.currentScope.size;
+        this.currentScope.set(name, offset);
         const value = ctx.expr();
-        if (value)
+        if (value) {
             this.visitExpr(value);
-        // TODO: Properly determine compile time env position
-        this.instrs[this.wc++] = (0, RustLiteCompiler_1.assign)({ first: 0, second: 0 });
+        }
+        else {
+            // Default initialization
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(0);
+        }
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.assign)(name, false);
         return;
     }
     visitCondStmt(ctx) {
@@ -309,12 +343,31 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     visitReturnStmt(ctx) {
         console.log("Visiting ReturnStmt");
         const exprCtx = ctx.expr();
-        if (exprCtx)
-            return this.visitExpr(exprCtx);
+        if (exprCtx) {
+            this.visitExpr(exprCtx);
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.reset)();
+        }
+        else {
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(0);
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.reset)();
+        }
     }
     visitFnDeclareStmt(ctx) {
         console.log("Visiting FnDeclareStmt");
         const identifier = ctx.IDENTIFIER();
+        if (!identifier)
+            throw new Error("Function declaration requires a name");
+        const fnName = identifier.getText();
+        // Store function location in table
+        this.functionTable.set(fnName, this.wc);
+        const [paramTypes, paramNames] = this.processParamList(ctx.paramList());
+        // Create new scope for function
+        const oldScope = new Map(this.currentScope);
+        this.currentScope.clear();
+        // Add parameters to scope
+        paramNames.forEach((param, index) => {
+            this.currentScope.set(param, index);
+        });
         const paramListCtx = ctx.paramList();
         const blockCtx = ctx.block();
         const returnTypeCtx = ctx.returnType();
@@ -330,7 +383,7 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         if (types.length !== names.length) {
             throw new Error(`Parameter types and names do not match: ${types.length} != ${names.length}`);
         }
-        this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadFunction)(this.wc + 1, names.length); // this.wc + 1 is after goto instr
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadFunction)(names.length, this.wc + 1); // this.wc + 1 is after goto instr
         const gotoInstr = (0, RustLiteCompiler_1.jump)(0); // 0 is a placeholder
         this.instrs[this.wc++] = gotoInstr;
         this.visitBlock(blockCtx);
@@ -342,14 +395,17 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     visitFnCall(ctx) {
         console.log("Visiting FnCall");
         const fnName = ctx.IDENTIFIER().getText();
-        const compileTimePos = { first: 0, second: 0 }; // TODO: Get the compile time position of the function
-        this.instrs[this.wc++] = (0, RustLiteCompiler_1.load)(compileTimePos); // TODO: Add function address
+        const fnAddr = this.functionTable.get(fnName);
+        if (fnAddr === undefined) {
+            throw new Error(`Undefined function: ${fnName}`);
+        }
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(fnAddr);
         const args = ctx.argList();
         if (args) {
             for (let arg of args.expr()) {
                 if (!arg)
                     continue;
-                this.visitExpr(arg); // Loads arguments onto the stack
+                this.visitExpr(arg);
             }
         }
         this.instrs[this.wc++] = (0, RustLiteCompiler_1.call)(args ? args.expr().length : 0);
@@ -439,10 +495,17 @@ class RustLiteEvaluator extends runner_1.BasicEvaluator {
             const tree = parser.prog();
             // Evaluate the parsed tree
             this.visitor.visit(tree);
+            const instructions = this.visitor.getCompiledInstructions();
             console.log("Compiled instructions:");
-            console.log(this.visitor.getCompiledInstructions());
-            // Send the result to the REPL
-            this.conductor.sendOutput(`Result of expression: ${this.visitor.getCompiledInstructions()}`);
+            console.log(instructions);
+            // Create and run VM with instructions
+            const vm = new RustLiteVirtualMachine_1.RustLiteVirtualMachine([...instructions]);
+            // const result = vm.run();
+            // // Send both instructions and execution result to the REPL
+            // this.conductor.sendOutput(
+            //   `Compiled instructions: ${JSON.stringify(instructions, null, 2)}\n` +
+            //     `Execution result: ${result}`
+            // );
         }
         catch (error) {
             // Handle errors and send them to the REPL
