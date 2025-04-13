@@ -244,6 +244,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
     [instruction_type.EXIT_SCOPE]: (instr: instruction) => {
       // Pop the current stack frame
+      this.stack.dump();
       this.stack.popFrame();
     },
 
@@ -298,8 +299,10 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     },
 
     [instruction_type.RESET]: (instr: instruction) => {
+      // this.stack.dump();
       this.stack.popFrame(); // Remove current frame
       this.pc = this.stack.pop(); // Restore return address
+      // this.stack.dump();
     },
 
     [instruction_type.TAIL_CALL]: (instr: instruction) => {

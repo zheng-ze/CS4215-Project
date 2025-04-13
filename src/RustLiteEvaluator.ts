@@ -102,7 +102,6 @@ class RustLiteEvaluatorVisitor
 
     // After processing all global elements, call main if it exists
     const mainAddr = this.functionTable.get("main");
-    console.log(`address of main: ${mainAddr}`);
     if (mainAddr !== undefined) {
       this.instrs[this.wc++] = loadFunction(0, mainAddr); // Load the function
       this.instrs[this.wc++] = call(0); // Call main with 0 arguments
@@ -440,7 +439,7 @@ class RustLiteEvaluatorVisitor
     const fnName = identifier.getText();
 
     // Store function location in table
-    this.functionTable.set(fnName, this.wc);
+    this.functionTable.set(fnName, this.wc + 2);
 
     const [paramTypes, paramNames] = this.processParamList(ctx.paramList());
 

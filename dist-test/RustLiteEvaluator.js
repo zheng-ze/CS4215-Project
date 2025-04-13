@@ -359,7 +359,7 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
             throw new Error("Function declaration requires a name");
         const fnName = identifier.getText();
         // Store function location in table
-        this.functionTable.set(fnName, this.wc);
+        this.functionTable.set(fnName, this.wc + 2);
         const [paramTypes, paramNames] = this.processParamList(ctx.paramList());
         // Create new scope for function
         const oldScope = new Map(this.currentScope);
@@ -500,12 +500,10 @@ class RustLiteEvaluator extends runner_1.BasicEvaluator {
             console.log(instructions);
             // Create and run VM with instructions
             const vm = new RustLiteVirtualMachine_1.RustLiteVirtualMachine([...instructions]);
-            // const result = vm.run();
-            // // Send both instructions and execution result to the REPL
-            // this.conductor.sendOutput(
-            //   `Compiled instructions: ${JSON.stringify(instructions, null, 2)}\n` +
-            //     `Execution result: ${result}`
-            // );
+            const result = vm.run();
+            // Send both instructions and execution result to the REPL
+            this.conductor.sendOutput(`Compiled instructions: ${JSON.stringify(instructions, null, 2)}\n` +
+                `Execution result: ${result}`);
         }
         catch (error) {
             // Handle errors and send them to the REPL

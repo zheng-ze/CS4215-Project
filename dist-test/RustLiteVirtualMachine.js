@@ -140,6 +140,7 @@ class RustLiteVirtualMachine {
             },
             [RustLiteTypes_1.instruction_type.EXIT_SCOPE]: (instr) => {
                 // Pop the current stack frame
+                this.stack.dump();
                 this.stack.popFrame();
             },
             [RustLiteTypes_1.instruction_type.LD]: (instr) => {
@@ -184,8 +185,10 @@ class RustLiteVirtualMachine {
                 this.e = this.get_closure_env(fun);
             },
             [RustLiteTypes_1.instruction_type.RESET]: (instr) => {
+                // this.stack.dump();
                 this.stack.popFrame(); // Remove current frame
                 this.pc = this.stack.pop(); // Restore return address
+                // this.stack.dump();
             },
             [RustLiteTypes_1.instruction_type.TAIL_CALL]: (instr) => {
                 const tail_call = instr;
