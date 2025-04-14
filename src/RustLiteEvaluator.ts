@@ -491,11 +491,14 @@ class RustLiteEvaluatorVisitor
     if (fnAddr === undefined) {
       throw new Error(`Undefined function: ${fnName}`);
     }
-    const args = ctx.argList();
-    console.log(args?.expr());
-    const arity = args?.expr()?.length || 0;
-    this.instrs[this.wc++] = loadFunction(arity, fnAddr);
-    this.instrs[this.wc++] = call(arity);
+    const args = ctx.argList()?.expr() || [];
+    for (let i = args.length - 1; i >= 0; i--) {
+      this.visitExpr(args[i]);
+    }
+
+    // Load function and call it
+    this.instrs[this.wc++] = loadFunction(args.length, fnAddr);
+    this.instrs[this.wc++] = call(args.length);
     return;
   }
 

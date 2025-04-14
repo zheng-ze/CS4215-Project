@@ -264,36 +264,74 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
     [instruction_type.LDF]: (instr: instruction) => {
       const ldf = instr as LDF;
-      const closure_addr = this.allocate_Closure(ldf.arity, ldf.addr, this.e);
-      this.stack.push(closure_addr);
-      // Don't skip over function body - the compiler handles this
+      // Store closure directly on stack: [arity, pc, env]
+      this.stack.push(ldf.arity);
+      this.stack.push(ldf.addr);
+      this.stack.push(this.e);
     },
 
     [instruction_type.CALL]: (instr: instruction) => {
       const call = instr as CALL;
       const arity = call.arity;
 
-      // Get function closure first
-      const fun = this.stack.pop();
-      if (!this.is_Closure(fun)) {
-        throw new Error("Attempting to call a non-function value");
+      // Get closure components from stack
+      const env = this.stack.pop();
+      const functionPC = this.stack.pop();
+      const closureArity = this.stack.pop();
+
+      if (closureArity !== arity) {
+        throw new Error(`Function expected ${closureArity} arguments but got ${arity}`);
       }
 
       // Save current execution context
-      this.stack.push(this.pc);
+      const returnAddr = this.pc;
+      this.stack.push(returnAddr);
 
-      // Create new stack frame for parameters
+      // Create new stack frame for parameters and local variables
       this.stack.pushFrame(arity);
 
-      // Pop arguments in reverse order and store in frame
+      // Pop and store arguments in correct order
+      const args: SUPPORTED_TYPES[] = [];
+      for (let i = 0; i < arity; i++) {
+        args[i] = this.stack.pop();
+      }
+      // Store arguments in reverse order to match parameter order
       for (let i = arity - 1; i >= 0; i--) {
-        const arg = this.stack.pop();
-        this.stack.setLocal(i, arg);
+        this.stack.push(args[i]);
       }
 
-      // Jump to function code
-      this.pc = this.get_closure_pc(fun);
-      this.e = this.get_closure_env(fun);
+      // Update program counter and environment
+      this.pc = functionPC;
+      this.e = env;
+    },
+
+    [instruction_type.TAIL_CALL]: (instr: instruction) => {
+      const tail_call = instr as TAIL_CALL;
+      const arity = tail_call.arity;
+
+      // Get closure components from stack
+      const env = this.stack.pop();
+      const functionPC = this.stack.pop();
+      const closureArity = this.stack.pop();
+
+      if (closureArity !== arity) {
+        throw new Error(`Function expected ${closureArity} arguments but got ${arity}`);
+      }
+
+      // Store arguments temporarily
+      const args: SUPPORTED_TYPES[] = [];
+      for (let i = 0; i < arity; i++) {
+        args[i] = this.stack.pop();
+      }
+
+      // Reuse the current frame
+      for (let i = arity - 1; i >= 0; i--) {
+        this.stack.push(args[i]);
+      }
+
+      // Update PC and environment
+      this.pc = functionPC;
+      this.e = env;
     },
 
     [instruction_type.RESET]: (instr: instruction) => {
@@ -301,30 +339,6 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       this.stack.popFrame(); // Remove current frame
       this.pc = this.stack.pop(); // Restore return address
       this.stack.push(returnVal); // Push return value onto stack
-    },
-
-    [instruction_type.TAIL_CALL]: (instr: instruction) => {
-      const tail_call = instr as TAIL_CALL;
-      const arity = tail_call.arity;
-
-      // Reuse current frame for tail call optimization
-      const args = new Array(arity);
-      for (let i = arity - 1; i >= 0; i--) {
-        args[i] = this.stack.pop();
-      }
-      const fun = this.stack.pop();
-
-      // Reuse the current frame instead of creating a new one
-      for (let i = 0; i < arity; i++) {
-        this.stack.setLocal(i, args[i]);
-      }
-
-      if (this.is_Closure(fun)) {
-        this.pc = this.get_closure_pc(fun);
-        this.e = this.get_closure_env(fun);
-      } else {
-        throw new Error("Attempting to call a non-function value");
-      }
     },
   };
 
