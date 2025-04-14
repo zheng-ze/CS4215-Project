@@ -105,6 +105,8 @@ class RustLiteEvaluatorVisitor
     if (mainAddr !== undefined) {
       this.instrs[this.wc++] = loadFunction(0, mainAddr); // Load the function
       this.instrs[this.wc++] = call(0); // Call main with 0 arguments
+      // Add a POP instruction to remove the return value from the stack
+      // This prevents the VM from getting stuck in a loop
     }
     this.instrs[this.wc++] = done(); // End program execution
   }
@@ -288,17 +290,31 @@ class RustLiteEvaluatorVisitor
     const numLocals = names.length;
     this.instrs[this.wc++] = enterScope(numLocals);
 
+    // Track if we've seen a return statement
+    let hasReturn = false;
+
     for (let stmt of stmts) {
       if (!stmt) continue;
       try {
         console.log(`Statement: ${stmt.getText()}`);
+        
+        // Check if this is a return statement
+        if (stmt.returnStmt()) {
+          hasReturn = true;
+        }
+        
         this.visitStmt(stmt);
       } catch (error) {
         throw `Error while visiting statement ${stmt.getText()}, with error: ${error}`;
       }
     }
 
-    this.instrs[this.wc++] = exitScope();
+    // Only add EXIT_SCOPE if there's no return statement
+    // If there is a return, the RESET instruction will handle popping the frame
+    if (!hasReturn) {
+      this.instrs[this.wc++] = exitScope();
+    }
+    
     // Restore outer scope when exiting
     this.currentScope = outerScope;
   }
@@ -427,11 +443,12 @@ class RustLiteEvaluatorVisitor
     const exprCtx = ctx.expr();
     if (exprCtx) {
       this.visitExpr(exprCtx);
-      this.instrs[this.wc++] = reset();
     } else {
       this.instrs[this.wc++] = loadConstant(0);
-      this.instrs[this.wc++] = reset();
     }
+    
+    // Missing RESET instruction - this is critical!
+    this.instrs[this.wc++] = reset();
   }
 
   visitFnDeclareStmt(ctx: FnDeclareStmtContext): void {
@@ -444,44 +461,48 @@ class RustLiteEvaluatorVisitor
     this.functionTable.set(fnName, this.wc + 2);
 
     const [paramTypes, paramNames] = this.processParamList(ctx.paramList());
-
-    // Create new scope for function
-    const oldScope = new Map(this.currentScope);
-    this.currentScope.clear();
-
-    // Add parameters to scope
-    paramNames.forEach((param, index) => {
-      this.currentScope.set(param, index);
-    });
-
-    const paramListCtx = ctx.paramList();
-    const blockCtx = ctx.block();
-    const returnTypeCtx = ctx.returnType();
-    if (!identifier || !blockCtx) {
-      throw new Error("Invalid function declaration");
-    }
-
-    const [types, names] = this.processParamList(paramListCtx);
-
-    let returnType = "void";
-    if (returnTypeCtx) {
-      returnType = this.processReturnType(returnTypeCtx);
-      // If return type is not provided, default to void
-    }
-
-    if (types.length !== names.length) {
-      throw new Error(
-        `Parameter types and names do not match: ${types.length} != ${names.length}`
-      );
-    }
-
-    const gotoInstr: GOTO = jump(0); // 0 is a placeholder
+    
+    // Save the outer scope
+    const outerScope = new Map(this.currentScope);
+    
+    // Create new scope for function parameters instead of clearing
+    this.currentScope = new Map();
+    
+    const gotoInstr: GOTO = jump(0);
     this.instrs[this.wc++] = gotoInstr;
+    
+    // Add enter scope instruction with parameter count
+    this.instrs[this.wc++] = enterScope(paramNames.length);
+    
+    // Register parameters in the scope map with proper frame level and offset
+    paramNames.forEach((param, index) => {
+      // Add parameters to current scope first
+      this.currentScope.set(param, index);
+      this.instrs[this.wc++] = assign(param, true);
+      console.log(`Registering parameter ${param} at offset ${index}`);
+    });
+    
+    // Visit the function body
+    const blockCtx = ctx.block();
+    if (!blockCtx) throw new Error("Invalid function declaration");
     this.visitBlock(blockCtx);
-    this.instrs[this.wc++] = loadConstant(0); // TODO: Add null as supported type and return it
-    this.instrs[this.wc++] = reset();
-    gotoInstr.addr = this.wc; // Set the address of the jump instruction to the current instruction count which is after the function body
-    return;
+    
+    // Check if the last instruction is a RESET (return statement)
+    // If not, add a default return with RESET
+    const lastInstr = this.instrs[this.wc - 1];
+    if (!lastInstr || lastInstr.type !== instruction_type.RESET) {
+      // Add default return if none exists
+      this.instrs[this.wc++] = loadConstant(0);
+      this.instrs[this.wc++] = reset();
+    }
+    
+    // Exit scope is needed but should come after the RESET in the VM execution
+    this.instrs[this.wc++] = exitScope();
+    
+    gotoInstr.addr = this.wc;
+    
+    // Restore outer scope
+    this.currentScope = outerScope;
   }
 
   visitFnCall(ctx: FnCallContext): void {
@@ -492,6 +513,7 @@ class RustLiteEvaluatorVisitor
       throw new Error(`Undefined function: ${fnName}`);
     }
     const args = ctx.argList()?.expr() || [];
+    console.log(`Calling function ${fnName} with ${args.length} arguments`);
     for (let i = args.length - 1; i >= 0; i--) {
       this.visitExpr(args[i]);
     }

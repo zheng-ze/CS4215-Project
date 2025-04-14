@@ -95,6 +95,7 @@ export function exitScope(): EXIT_SCOPE {
 }
 
 export function load(name: string): LD {
+  console.log(scopeMap)
   const info = scopeMap.get(name);
   if (!info) {
     throw new Error(`Undefined variable: ${name}`);
@@ -128,20 +129,15 @@ export function loadFunction(arity: number, address: number): LDF {
 
 // Update assign to handle function parameters
 export function assign(name: string, isParameter: boolean = false): ASSIGN {
-  const info = scopeMap.get(name);
+  let info = scopeMap.get(name);
   if (!info) {
-    const newInfo = {
+    info = {
       frameLevel: currentFrameLevel,
       offset: isParameter ? currentOffset : currentOffset++
     };
-    scopeMap.set(name, newInfo);
-    if (isParameter) {
-      currentOffset++;
-    }
-    return {
-      type: instruction_type.ASSIGN,
-      pos: { first: newInfo.frameLevel, second: newInfo.offset },
-    };
+    console.log(`Adding ${isParameter ? 'parameter' : 'variable'} ${name} to scope:`, info);
+    scopeMap.set(name, info);
+    if (isParameter) currentOffset++;
   }
   return {
     type: instruction_type.ASSIGN,
