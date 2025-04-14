@@ -263,23 +263,36 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       
       try {
         // The first part of the position indicates the frame level
-        // Frame level 2 means variables in the current function's frame
+        // For nested functions, we need to adjust which frame we're accessing
         
         if (ld.pos.first === 2) {
-          // For frame level 2, we need to access the current frame
-          // which is the last frame in the frames array
-          const frameIndex = this.stack.getFrameCount() - 1;
+          // For frame level 2, we need to find the correct frame
+          // This could be the current function's frame or a parent frame
           
-          if (frameIndex < 0) {
+          // First, try the current frame
+          const currentFrameIndex = this.stack.getFrameCount() - 1;
+          
+          if (currentFrameIndex < 0) {
             throw new Error(`Cannot access frame level ${ld.pos.first} when no frames exist`);
           }
           
-          const value = this.stack.getLocalFromFrame(frameIndex, ld.pos.second);
-          this.stack.push(value);
-          console.log(`Loaded value from frame level ${ld.pos.first} (frame index ${frameIndex}), offset ${ld.pos.second}: ${value}`);
+          // Check if we're in a nested scope inside a function
+          // If so, we need to access the parent frame that contains the parameters
+          const currentFrame = this.stack.getFrame(currentFrameIndex);
+          
+          // If current frame is too small to hold the requested offset, look at parent frame
+          if (ld.pos.second >= currentFrame.frameSize && currentFrameIndex > 0) {
+            const parentFrameIndex = currentFrameIndex - 1;
+            const value = this.stack.getLocalFromFrame(parentFrameIndex, ld.pos.second);
+            this.stack.push(value);
+            console.log(`Loaded value from parent frame ${parentFrameIndex}, offset ${ld.pos.second}: ${value}`);
+          } else {
+            const value = this.stack.getLocalFromFrame(currentFrameIndex, ld.pos.second);
+            this.stack.push(value);
+            console.log(`Loaded value from frame level ${ld.pos.first} (frame index ${currentFrameIndex}), offset ${ld.pos.second}: ${value}`);
+          }
         } else if (ld.pos.first === 3) {
           // For frame level 3, we need to access the parent frame
-          // which is the second-to-last frame in the frames array
           const frameIndex = this.stack.getFrameCount() - 2;
           
           if (frameIndex < 0) {
@@ -303,8 +316,30 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       const value = this.stack.peek();
       
       try {
-        this.stack.setLocal(assign.pos.second, value);
-        console.log(`Assigned value ${value} to variable at offset ${assign.pos.second}`);
+        // Handle different frame levels for assignment
+        if (assign.pos.first === 2) {
+          // For frame level 2, assign to the current frame
+          const frameIndex = this.stack.getFrameCount() - 1;
+          
+          if (frameIndex < 0) {
+            throw new Error(`Cannot assign to frame level ${assign.pos.first} when no frames exist`);
+          }
+          
+          this.stack.setLocalInFrame(frameIndex, assign.pos.second, value);
+          console.log(`Assigned value ${value} to variable at frame ${frameIndex}, offset ${assign.pos.second}`);
+        } else if (assign.pos.first === 3) {
+          // For frame level 3, assign to the parent frame
+          const frameIndex = this.stack.getFrameCount() - 2;
+          
+          if (frameIndex < 0) {
+            throw new Error(`Cannot assign to frame level ${assign.pos.first} when only ${this.stack.getFrameCount()} frames exist`);
+          }
+          
+          this.stack.setLocalInFrame(frameIndex, assign.pos.second, value);
+          console.log(`Assigned value ${value} to variable at frame ${frameIndex}, offset ${assign.pos.second}`);
+        } else {
+          throw new Error(`Assigning to variables at frame level ${assign.pos.first} not yet implemented`);
+        }
       } catch (error: any) {
         console.error(`Error assigning to variable at position ${assign.pos.first}.${assign.pos.second}: ${error.message}`);
         throw error;
@@ -322,7 +357,6 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     [instruction_type.CALL]: (instr: instruction) => {
       const call = instr as CALL;
       const arity = call.arity;
-
       // Get function info from stack (order is now reversed from LDF)
       const functionArity = this.stack.pop();
       const functionPC = this.stack.pop();
@@ -331,27 +365,33 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
         throw new Error(`Function expected ${functionArity} arguments but got ${arity}`);
       }
 
-      // Save current execution context - this is the return address
-      const returnAddr = this.pc; // Point to the instruction after the CALL
+      // Set return address to current PC
+      const returnAddr = this.pc;
       console.log(`Setting return address to ${returnAddr} for function call to PC=${functionPC}`);
-      
+
       // Store arguments temporarily
       const args: SUPPORTED_TYPES[] = [];
+      console.log("In Call fn")
       for (let i = 0; i < arity; i++) {
         args[i] = this.stack.pop();
       }
-      
-      // Create new stack frame with the return address
-      // Make sure we allocate at least 1 slot for local variables
-      const frameSize = Math.max(arity, 1);
+
+      console.log(args)
+
+      // Create a new frame for the function with enough space for all parameters
+      const frameSize = arity;
       this.stack.pushFrame(frameSize, returnAddr);
       
       // Double-check that the return address is set correctly
       this.stack.setReturnAddress(returnAddr);
       
-      // Store arguments in the new frame
+      // Store arguments in the new frame in the correct order
       for (let i = 0; i < arity; i++) {
-        this.stack.setLocal(i, args[arity - 1 - i]); // Reverse order to match parameter order
+        // The arguments are popped in reverse order from the stack
+        // For a call like sum(x, y), the stack will have [y, x]
+        // So we need to store them in the correct order in the frame
+        this.stack.setLocalInFrame(this.stack.getFrameCount() - 1, i, args[arity - 1 - i]);
+        console.log(`Setting argument ${i} to value ${args[arity - 1 - i]}`);
       }
 
       // Update program counter

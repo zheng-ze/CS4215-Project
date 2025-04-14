@@ -94,24 +94,16 @@ export function exitScope(): EXIT_SCOPE {
   };
 }
 
-export function load(name: string): LD {
-  console.log(scopeMap)
-  const info = scopeMap.get(name);
-  if (!info) {
-    throw new Error(`Undefined variable: ${name}`);
-  }
-  return {
-    type: instruction_type.LD,
-    pos: {first: info.frameLevel, second: info.offset},
-  };
-}
-
 // Add function scope tracking
 let functionScopes: Map<string, ScopeInfo>[] = [];
 
+// Add a variable to track the current function level
+let currentFunctionLevel = 2; // Start at 2 for the main function
+
+// Update enterFunctionScope to set the correct frame level
 export function enterFunctionScope(): void {
   functionScopes.push(new Map());
-  currentFrameLevel = 0;
+  currentFrameLevel = currentFunctionLevel;
   currentOffset = 0;
 }
 
@@ -127,12 +119,27 @@ export function loadFunction(arity: number, address: number): LDF {
   };
 }
 
-// Update assign to handle function parameters
+// Update load function to correctly handle variable access
+export function load(name: string): LD {
+  console.log(scopeMap);
+  const info = scopeMap.get(name);
+  if (!info) {
+    throw new Error(`Undefined variable: ${name}`);
+  }
+  
+  // Make sure we're using the correct frame level for variable access
+  return {
+    type: instruction_type.LD,
+    pos: {first: info.frameLevel, second: info.offset},
+  };
+}
+
+// Update assign to use the current function level
 export function assign(name: string, isParameter: boolean = false): ASSIGN {
   let info = scopeMap.get(name);
   if (!info) {
     info = {
-      frameLevel: currentFrameLevel,
+      frameLevel: currentFunctionLevel,
       offset: isParameter ? currentOffset : currentOffset++
     };
     console.log(`Adding ${isParameter ? 'parameter' : 'variable'} ${name} to scope:`, info);

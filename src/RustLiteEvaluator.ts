@@ -514,10 +514,13 @@ class RustLiteEvaluatorVisitor
     }
     const args = ctx.argList()?.expr() || [];
     console.log(`Calling function ${fnName} with ${args.length} arguments`);
-    for (let i = args.length - 1; i >= 0; i--) {
+    
+    // Push arguments in FORWARD order (first argument first)
+    // This ensures they'll be in the correct order when popped in the VM
+    for (let i = 0; i < args.length; i++) {
       this.visitExpr(args[i]);
     }
-
+  
     // Load function and call it
     this.instrs[this.wc++] = loadFunction(args.length, fnAddr);
     this.instrs[this.wc++] = call(args.length);
