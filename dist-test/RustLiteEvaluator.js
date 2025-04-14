@@ -226,10 +226,6 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
                 throw `Error while visiting statement ${stmt.getText()}, with error: ${error}`;
             }
         }
-        if (ctx._finalExpr) {
-            this.visitExpr(ctx._finalExpr);
-            this.instrs[this.wc++] = (0, RustLiteCompiler_1.reset)();
-        }
         this.instrs[this.wc++] = (0, RustLiteCompiler_1.exitScope)();
         // Restore outer scope when exiting
         this.currentScope = outerScope;
@@ -388,7 +384,6 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         if (types.length !== names.length) {
             throw new Error(`Parameter types and names do not match: ${types.length} != ${names.length}`);
         }
-        this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadFunction)(names.length, this.wc + 1); // this.wc + 1 is after goto instr
         const gotoInstr = (0, RustLiteCompiler_1.jump)(0); // 0 is a placeholder
         this.instrs[this.wc++] = gotoInstr;
         this.visitBlock(blockCtx);
@@ -404,16 +399,11 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         if (fnAddr === undefined) {
             throw new Error(`Undefined function: ${fnName}`);
         }
-        this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(fnAddr);
         const args = ctx.argList();
-        if (args) {
-            for (let arg of args.expr()) {
-                if (!arg)
-                    continue;
-                this.visitExpr(arg);
-            }
-        }
-        this.instrs[this.wc++] = (0, RustLiteCompiler_1.call)(args ? args.expr().length : 0);
+        console.log(args?.expr());
+        const arity = args?.expr()?.length || 0;
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadFunction)(arity, fnAddr);
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.call)(arity);
         return;
     }
     visitVectorExpr(ctx) {
@@ -502,7 +492,9 @@ class RustLiteEvaluator extends runner_1.BasicEvaluator {
             this.visitor.visit(tree);
             const instructions = this.visitor.getCompiledInstructions();
             console.log("Compiled instructions:");
-            console.log(instructions);
+            instructions.forEach((instruction, index) => {
+                console.log(`${index}:`, instruction);
+            });
             // Create and run VM with instructions
             const vm = new RustLiteVirtualMachine_1.RustLiteVirtualMachine([...instructions]);
             const result = vm.run();

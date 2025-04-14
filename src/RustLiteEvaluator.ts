@@ -297,10 +297,6 @@ class RustLiteEvaluatorVisitor
         throw `Error while visiting statement ${stmt.getText()}, with error: ${error}`;
       }
     }
-    if (ctx._finalExpr) {
-      this.visitExpr(ctx._finalExpr);
-      this.instrs[this.wc++] = reset();
-    }
 
     this.instrs[this.wc++] = exitScope();
     // Restore outer scope when exiting
@@ -479,7 +475,6 @@ class RustLiteEvaluatorVisitor
       );
     }
 
-    this.instrs[this.wc++] = loadFunction(names.length, this.wc + 1); // this.wc + 1 is after goto instr
     const gotoInstr: GOTO = jump(0); // 0 is a placeholder
     this.instrs[this.wc++] = gotoInstr;
     this.visitBlock(blockCtx);
@@ -496,16 +491,11 @@ class RustLiteEvaluatorVisitor
     if (fnAddr === undefined) {
       throw new Error(`Undefined function: ${fnName}`);
     }
-
-    this.instrs[this.wc++] = loadConstant(fnAddr);
     const args = ctx.argList();
-    if (args) {
-      for (let arg of args.expr()) {
-        if (!arg) continue;
-        this.visitExpr(arg);
-      }
-    }
-    this.instrs[this.wc++] = call(args ? args.expr().length : 0);
+    console.log(args?.expr());
+    const arity = args?.expr()?.length || 0;
+    this.instrs[this.wc++] = loadFunction(arity, fnAddr);
+    this.instrs[this.wc++] = call(arity);
     return;
   }
 
@@ -628,7 +618,9 @@ export class RustLiteEvaluator extends BasicEvaluator {
       this.visitor.visit(tree);
       const instructions = this.visitor.getCompiledInstructions();
       console.log("Compiled instructions:");
-      console.log(instructions);
+      instructions.forEach((instruction, index) => {
+        console.log(`${index}:`, instruction);
+      });
 
       // Create and run VM with instructions
       const vm = new RustLiteVirtualMachine([...instructions]);
