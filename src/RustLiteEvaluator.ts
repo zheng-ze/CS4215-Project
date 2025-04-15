@@ -4,7 +4,6 @@ import {
   CommonTokenStream,
 } from "antlr4ng";
 import {
-  ArgListContext,
   ArithExprContext,
   BlockContentContext,
   BlockContext,
@@ -39,12 +38,7 @@ import {
   VectorTypeContext,
   WhileStmtContext,
 } from "./parser/src/RustLiteParser";
-import {
-  GOTO,
-  SUPPORTED_TYPES,
-  instruction,
-  instruction_type,
-} from "./RustLiteTypes";
+import { GOTO, instruction, instruction_type } from "./RustLiteTypes";
 import {
   assign,
   binaryOperation,
@@ -65,8 +59,6 @@ import { IRunnerPlugin } from "conductor/dist/conductor/runner/types";
 import { RustLiteLexer } from "./parser/src/RustLiteLexer";
 import { RustLiteVisitor } from "./parser/src/RustLiteVisitor";
 import { RustLiteVirtualMachine } from "./RustLiteVirtualMachine";
-import { error } from "console";
-import { stat } from "fs";
 
 class RustLiteEvaluatorVisitor
   extends AbstractParseTreeVisitor<void>
@@ -298,7 +290,7 @@ class RustLiteEvaluatorVisitor
 
   visitBlockContent(ctx: BlockContentContext): void {
     // Save outer scope
-    let currentScope = new Map();
+    let currentScope = new Map<string, number>();
     this.scopeList.push(currentScope);
     console.log("Visiting BlockContent");
     const stmts = ctx.stmt();
@@ -393,7 +385,7 @@ class RustLiteEvaluatorVisitor
       this.instrs[this.wc++] = loadConstant(0);
     }
 
-    this.instrs[this.wc++] = assign(name, false);
+    this.instrs[this.wc++] = assign(this.scopeList.length - 1, offset);
     return;
   }
 
@@ -477,35 +469,32 @@ class RustLiteEvaluatorVisitor
     const fnName = identifier.getText();
 
     // Store function location in table
-    this.functionTable.set(fnName, this.wc + 2);
+    this.functionTable.set(fnName, this.wc + 1); // +1 to skip the jump instruction
 
     const [paramTypes, paramNames] = this.processParamList(ctx.paramList());
     console.log(`Params: ${paramNames}`);
 
-    // Save the outer scope
-    const outerScope = new Map(this.currentScope);
-
     // Create new scope for function parameters instead of clearing
-    this.currentScope = new Map();
+    const currentScope = new Map<string, number>();
+    this.scopeList.push(currentScope);
 
     const gotoInstr: GOTO = jump(0);
     this.instrs[this.wc++] = gotoInstr;
 
-    // Add enter scope instruction with parameter count
-    // this.instrs[this.wc++] = enterScope(paramNames.length);
-
-    // Register parameters in the scope map with proper frame level and offset
-    paramNames.forEach((param, index) => {
-      // Add parameters to current scope first
-      this.currentScope.set(param, index);
-      this.instrs[this.wc++] = assign(param, true);
-      console.log(`Registering parameter ${param} at offset ${index}`);
-    });
+    const fnParams = new Map<string, number>();
 
     // Visit the function body
     const blockCtx = ctx.block();
     if (!blockCtx) throw new Error("Invalid function declaration");
     this.visitBlock(blockCtx);
+
+    // Register parameters in the scope map with proper frame level and offset
+    paramNames.forEach((param, index) => {
+      // Add parameters to current scope first
+      fnParams.set(param, index);
+      this.instrs[this.wc++] = assign(this.scopeList.length - 1, index);
+      console.log(`Registering parameter ${param} at offset ${index}`);
+    });
 
     // Check if the last instruction is a RESET (return statement)
     // If not, add a default return with RESET
@@ -522,7 +511,7 @@ class RustLiteEvaluatorVisitor
     gotoInstr.addr = this.wc;
 
     // Restore outer scope
-    this.currentScope = outerScope;
+    this.scopeList.pop();
   }
 
   visitFnCall(ctx: FnCallContext): void {
@@ -534,6 +523,12 @@ class RustLiteEvaluatorVisitor
     }
     const args = ctx.argList()?.expr() || [];
     console.log(`Calling function ${fnName} with ${args.length} arguments`);
+
+    // Load arguments in reverse order
+    for (let i = args.length - 1; i >= 0; i--) {
+      if (!args[i]) continue;
+      this.visitExpr(args[i]);
+    }
 
     // Load function and call it
     this.instrs[this.wc++] = loadFunction(args.length, fnAddr);
