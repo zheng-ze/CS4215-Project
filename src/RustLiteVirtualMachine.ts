@@ -19,8 +19,10 @@ import {
   size_offset,
   word_size,
   max_words,
+  EXIT_SCOPE,
 } from "./RustLiteTypes";
 import { RustLiteStack } from "./RustLiteStack";
+import { off } from "process";
 
 interface VirtualMachineMicrocode {
   [key: string]: (instr: instruction) => void;
@@ -180,35 +182,16 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   }
 
   microcode: VirtualMachineMicrocode = {
-    [instruction_type.LDC]: (instr: instruction) => {
-      const ldc = instr as LDC;
-      if (typeof ldc.val === "number" || typeof ldc.val === "boolean") {
-        // Store primitives directly on the stack
-        this.stack.push(ldc.val);
-      } else {
-        console.log("Non Primitive Value");
-      }
-    },
-    
-    [instruction_type.UNOP]: (instr: instruction) => {
-      const unop = instr as UNOP;
-      const arg = this.stack.pop();
-      const result = this.apply_unop(unop.sym, arg);
-      this.stack.push(result);
-    },
-    
-    [instruction_type.BINOP]: (instr: instruction) => {
-      const binop = instr as BINOP;
-      const right = this.stack.pop();
-      const left = this.stack.pop();
-      const result = this.apply_binop(binop.sym, left, right);
-      this.stack.push(result);
-    },
-    
+    [instruction_type.LDC]: this.handle_ldc_instruction,
+
+    [instruction_type.UNOP]: this.handle_unop_instruction,
+
+    [instruction_type.BINOP]: this.handle_binop_instruction,
+
     [instruction_type.POP]: (instr: instruction) => {
       this.stack.pop();
     },
-    
+
     [instruction_type.JOF]: (instr: instruction) => {
       const jof = instr as JOF;
       const condition = this.stack.pop();
@@ -217,142 +200,18 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
         this.pc = jof.addr;
       }
     },
-    
-    [instruction_type.GOTO]: (instr: instruction) => {
-      const goto = instr as GOTO;
-      this.pc = goto.addr;
-    },
-    
-    [instruction_type.ENTER_SCOPE]: (instr: instruction) => {
-      const enter = instr as ENTER_SCOPE;
-      // Calculate the maximum variable offset that will be accessed in this scope
-      let maxOffset = enter.num;
-      
-      // Get the return address from the current frame to propagate to the new frame
-      let returnAddr = undefined;
-      if (this.stack.getFrameCount() > 0) {
-        returnAddr = this.stack.getReturnAddress();
-        console.log(`Propagating return address ${returnAddr} from parent frame to new scope frame`);
-      }
-      
-      // Create a new frame with the calculated size and propagate the return address
-      const minFrameSize = Math.max(maxOffset, 1);
-      console.log(`Creating frame with size ${minFrameSize} for scope`);
-      
-      // When creating a new scope frame, we need to ensure it has enough space
-      // for all variables that will be defined in this scope
-      this.stack.pushFrame(minFrameSize, returnAddr);
-      
-      // Also enter a lexical scope for lifetime tracking
-      this.stack.enterScope();
-      
-      // Dump the stack state for debugging
-      this.stack.dump();
-    },
-    
-    [instruction_type.EXIT_SCOPE]: (instr: instruction) => {
-      // Exit the lexical scope first to check for lifetime violations
-      this.stack.exitScope();
-      
-      // Then pop the stack frame
-      this.stack.popFrame();
-    },
 
-    [instruction_type.LD]: (instr: instruction) => {
-      const ld = instr as LD;
-      
-      try {
-        // The first part of the position indicates the frame level
-        // For nested functions, we need to adjust which frame we're accessing
-        
-        if (ld.pos.first === 2) {
-          // For frame level 2, we need to find the correct frame
-          // This could be the current function's frame or a parent frame
-          
-          // First, try the current frame
-          const currentFrameIndex = this.stack.getFrameCount() - 1;
-          
-          if (currentFrameIndex < 0) {
-            throw new Error(`Cannot access frame level ${ld.pos.first} when no frames exist`);
-          }
-          
-          // Check if we're in a nested scope inside a function
-          // If so, we need to access the parent frame that contains the parameters
-          const currentFrame = this.stack.getFrame(currentFrameIndex);
-          
-          // If current frame is too small to hold the requested offset, look at parent frame
-          if (ld.pos.second >= currentFrame.frameSize && currentFrameIndex > 0) {
-            const parentFrameIndex = currentFrameIndex - 1;
-            const value = this.stack.getLocalFromFrame(parentFrameIndex, ld.pos.second);
-            this.stack.push(value);
-            console.log(`Loaded value from parent frame ${parentFrameIndex}, offset ${ld.pos.second}: ${value}`);
-          } else {
-            const value = this.stack.getLocalFromFrame(currentFrameIndex, ld.pos.second);
-            this.stack.push(value);
-            console.log(`Loaded value from frame level ${ld.pos.first} (frame index ${currentFrameIndex}), offset ${ld.pos.second}: ${value}`);
-          }
-        } else if (ld.pos.first === 3) {
-          // For frame level 3, we need to access the parent frame
-          const frameIndex = this.stack.getFrameCount() - 2;
-          
-          if (frameIndex < 0) {
-            throw new Error(`Cannot access frame level ${ld.pos.first} when only ${this.stack.getFrameCount()} frames exist`);
-          }
-          
-          const value = this.stack.getLocalFromFrame(frameIndex, ld.pos.second);
-          this.stack.push(value);
-          console.log(`Loaded value from frame level ${ld.pos.first} (frame index ${frameIndex}), offset ${ld.pos.second}: ${value}`);
-        } else {
-          throw new Error(`Accessing variables from frame level ${ld.pos.first} not yet implemented`);
-        }
-      } catch (error: any) {
-        console.error(`Error accessing variable at position ${ld.pos.first}.${ld.pos.second}: ${error.message}`);
-        throw error;
-      }
-    },
+    [instruction_type.GOTO]: this.handle_goto_instr,
 
-    [instruction_type.ASSIGN]: (instr: instruction) => {
-      const assign = instr as ASSIGN;
-      const value = this.stack.peek();
-      
-      try {
-        // Handle different frame levels for assignment
-        if (assign.pos.first === 2) {
-          // For frame level 2, assign to the current frame
-          const frameIndex = this.stack.getFrameCount() - 1;
-          
-          if (frameIndex < 0) {
-            throw new Error(`Cannot assign to frame level ${assign.pos.first} when no frames exist`);
-          }
-          
-          this.stack.setLocalInFrame(frameIndex, assign.pos.second, value);
-          console.log(`Assigned value ${value} to variable at frame ${frameIndex}, offset ${assign.pos.second}`);
-        } else if (assign.pos.first === 3) {
-          // For frame level 3, assign to the parent frame
-          const frameIndex = this.stack.getFrameCount() - 2;
-          
-          if (frameIndex < 0) {
-            throw new Error(`Cannot assign to frame level ${assign.pos.first} when only ${this.stack.getFrameCount()} frames exist`);
-          }
-          
-          this.stack.setLocalInFrame(frameIndex, assign.pos.second, value);
-          console.log(`Assigned value ${value} to variable at frame ${frameIndex}, offset ${assign.pos.second}`);
-        } else {
-          throw new Error(`Assigning to variables at frame level ${assign.pos.first} not yet implemented`);
-        }
-      } catch (error: any) {
-        console.error(`Error assigning to variable at position ${assign.pos.first}.${assign.pos.second}: ${error.message}`);
-        throw error;
-      }
-    },
+    [instruction_type.ENTER_SCOPE]: this.handle_enter_scope,
 
-    [instruction_type.LDF]: (instr: instruction) => {
-      const ldf = instr as LDF;
-      // Just push the function address and arity - no environment needed
-      this.stack.push(ldf.addr);
-      this.stack.push(ldf.arity);
-      console.log(`LDF: Loaded function at address ${ldf.addr} with arity ${ldf.arity}`);
-    },
+    [instruction_type.EXIT_SCOPE]: this.handle_exit_scope,
+
+    [instruction_type.LD]: this.handle_load_instruction,
+
+    [instruction_type.ASSIGN]: this.handle_assign_instruction,
+
+    [instruction_type.LDF]: this.handle_ldf_instruction,
 
     [instruction_type.CALL]: (instr: instruction) => {
       const call = instr as CALL;
@@ -362,42 +221,52 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       const functionPC = this.stack.pop();
 
       if (functionArity !== arity) {
-        throw new Error(`Function expected ${functionArity} arguments but got ${arity}`);
+        throw new Error(
+          `Function expected ${functionArity} arguments but got ${arity}`
+        );
       }
 
       // Set return address to current PC
       const returnAddr = this.pc;
-      console.log(`Setting return address to ${returnAddr} for function call to PC=${functionPC}`);
+      console.log(
+        `Setting return address to ${returnAddr} for function call to PC=${functionPC}`
+      );
 
       // Store arguments temporarily
       const args: SUPPORTED_TYPES[] = [];
-      console.log("In Call fn")
+      console.log("In Call fn");
       for (let i = 0; i < arity; i++) {
         args[i] = this.stack.pop();
       }
 
-      console.log(args)
+      console.log(args);
 
       // Create a new frame for the function with enough space for all parameters
       const frameSize = arity;
       this.stack.pushFrame(frameSize, returnAddr);
-      
+
       // Double-check that the return address is set correctly
       this.stack.setReturnAddress(returnAddr);
-      
+
       // Store arguments in the new frame in the correct order
       for (let i = 0; i < arity; i++) {
         // The arguments are popped in reverse order from the stack
         // For a call like sum(x, y), the stack will have [y, x]
         // So we need to store them in the correct order in the frame
-        this.stack.setLocalInFrame(this.stack.getFrameCount() - 1, i, args[arity - 1 - i]);
+        this.stack.setLocalInFrame(
+          this.stack.getFrameCount() - 1,
+          i,
+          args[arity - 1 - i]
+        );
         console.log(`Setting argument ${i} to value ${args[arity - 1 - i]}`);
       }
 
       // Update program counter
       this.pc = Number(functionPC);
-      
-      console.log(`CALL: Jumping to function at PC=${functionPC}, return address=${returnAddr}, frame size=${frameSize}`);
+
+      console.log(
+        `CALL: Jumping to function at PC=${functionPC}, return address=${returnAddr}, frame size=${frameSize}`
+      );
     },
 
     [instruction_type.TAIL_CALL]: (instr: instruction) => {
@@ -407,9 +276,11 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       // Get function info from stack
       const functionArity = this.stack.pop();
       const functionPC = this.stack.pop();
-      
+
       if (functionArity !== arity) {
-        throw new Error(`Function expected ${functionArity} arguments but got ${arity}`);
+        throw new Error(
+          `Function expected ${functionArity} arguments but got ${arity}`
+        );
       }
 
       // For tail calls, we need to preserve the return address
@@ -417,7 +288,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       if (returnAddr === undefined) {
         throw new Error("Cannot perform tail call without a return address");
       }
-      
+
       // Store arguments temporarily
       const args: SUPPORTED_TYPES[] = [];
       for (let i = 0; i < arity; i++) {
@@ -426,11 +297,11 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
       // Pop the current frame but remember its return address
       this.stack.popFrame();
-      
+
       // Create a new frame with the same return address
       const frameSize = Math.max(arity, 1);
       this.stack.pushFrame(frameSize, returnAddr);
-      
+
       // Store arguments in the new frame
       for (let i = 0; i < arity; i++) {
         this.stack.setLocal(i, args[arity - 1 - i]);
@@ -438,63 +309,31 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
       // Update PC
       this.pc = Number(functionPC);
-      
-      console.log(`TAIL_CALL: Jumping to function at PC=${functionPC}, preserving return address=${returnAddr}`);
+
+      console.log(
+        `TAIL_CALL: Jumping to function at PC=${functionPC}, preserving return address=${returnAddr}`
+      );
     },
 
-    [instruction_type.RESET]: (instr: instruction) => {
-      // Get the return address from the current frame
-      const returnAddr = this.stack.getReturnAddress();
-      
-      // Get the return value from the top of the stack
-      const returnValue = this.stack.peek();
-      console.log(`Return value before frame pop: ${returnValue}`);
-      
-      if (returnAddr === undefined) {
-        // Try to find a return address in any parent frame
-        let foundReturnAddr = undefined;
-        for (let i = this.stack.getFrameCount() - 2; i >= 0; i--) {
-          const frame = this.stack.getFrame(i);
-          if (frame.returnAddress !== undefined) {
-            foundReturnAddr = frame.returnAddress;
-            console.log(`Found return address ${foundReturnAddr} in parent frame ${i}`);
-            break;
-          }
-        }
-        
-        if (foundReturnAddr === undefined) {
-          throw new Error("Cannot return without a return address");
-        }
-        
-        // Pop frames until we reach the one with the return address
-        while (this.stack.getFrameCount() > 0 && 
-               this.stack.getReturnAddress() !== foundReturnAddr) {
-          this.stack.exitScope();
-          this.stack.popFrame();
-        }
-        
-        // Push the return value back onto the stack
-        this.stack.push(returnValue);
-        
-        // Jump to the return address
-        console.log(`RESET: Returning to address ${foundReturnAddr} with value ${returnValue}`);
-        this.pc = foundReturnAddr;
-        return;
-      }
-      
-      // Pop the current frame
-      this.stack.exitScope();
-      this.stack.popFrame();
-      
-      // Push the return value back onto the stack
-      this.stack.push(returnValue);
-      console.log(`Return value after frame pop: ${returnValue}`);
-      
-      // Jump to the return address
-      console.log(`RESET: Returning to address ${returnAddr} with value ${returnValue}`);
-      this.pc = returnAddr;
-    },
+    [instruction_type.RESET]: this.handle_reset_instr,
   };
+
+  //Load Constant, for example when we are just calling a primitive value like 1;
+  private handle_ldc_instruction(ldc: LDC) {
+    if (typeof ldc.val === "number" || typeof ldc.val === "boolean") {
+      // Store primitives directly on the stack
+      this.stack.push(ldc.val);
+    } else {
+      console.log("Non Primitive Value");
+    }
+  }
+
+  //Unary Operator Handling for default operations with only one argument like ! or (-)
+  private handle_unop_instruction(unop: UNOP) {
+    const arg = this.stack.pop();
+    const result = this.apply_unop(unop.sym, arg);
+    this.stack.push(result);
+  }
 
   private unop_microcode: any = {
     "-unary": (num: number) => -num,
@@ -507,6 +346,16 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       return this.unop_microcode[op](value === 0 ? false : true);
     }
     return this.unop_microcode[op](value);
+  }
+
+  //Binary Operator Handling for default operations with two arguments
+  //Pre Condition: left and right arguments should have already been pushed onto the stack in the order [left, right]
+
+  private handle_binop_instruction(binop: BINOP) {
+    const right = this.stack.pop();
+    const left = this.stack.pop();
+    const result = this.apply_binop(binop.sym, left, right);
+    this.stack.push(result);
   }
 
   private binop_microcode: any = {
@@ -561,5 +410,59 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     }
 
     return operation(left, right);
+  }
+
+  //GOTO, updates the pointer of the current instruction to the index/address specified in the GOTO instruction
+  private handle_goto_instr(goto: GOTO) {
+    this.pc = goto.addr;
+  }
+
+  //Enters a new scope and creates a new frame on the stack
+  private handle_enter_scope(instr: ENTER_SCOPE) {
+    this.stack.pushFrame();
+  }
+
+  //Exits a scope by popping frame from stack and resetting stack pointer to previous base of frame
+  private handle_exit_scope(instr: EXIT_SCOPE) {
+    this.stack.popFrame();
+  }
+
+  //Loads value into stack by getting values stack frame
+  private handle_load_instruction(instr: LD) {
+    const frame_index = instr?.pos?.first;
+    const offset = instr?.pos?.second;
+    const value = this.stack.getLocalFromFrame(frame_index, offset);
+    this.stack.push(value);
+  }
+
+  //Assigns a value to the current scope by pushing it onto the stack
+  private handle_assign_instruction(instr: ASSIGN) {
+    this.stack.push(instr.pos.first);
+  }
+
+  //Loads a function into memory by creating a new frame on the stack with return address at current pc + 1
+  private handle_ldf_instruction(instr: LDF) {
+    this.stack.pushFrame(this.pc++);
+    this.pc = instr.addr;
+  }
+
+  private handle_reset_instr(instr: RESET) {
+    // Get the return address from the current frame
+    const returnAddr = this.stack.getReturnAddress();
+
+    // Get the return value from the top of the stack
+    const returnValue = this.stack.peek();
+    console.log(`Return value before frame pop: ${returnValue}`);
+
+    //Need to pop frames until we completely exit the function
+    while (
+      this.stack.getFrameCount() &&
+      this.stack.getReturnAddress() == returnAddr
+    ) {
+      this.stack.popFrame();
+    }
+
+    this.pc = returnAddr;
+    this.stack.push(returnValue);
   }
 }
