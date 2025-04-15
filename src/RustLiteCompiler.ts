@@ -59,14 +59,6 @@ export function jump(address: number): GOTO {
   };
 }
 
-export function loadFunction(arity: number, address: number): LDF {
-  return {
-    type: instruction_type.LDF,
-    arity: arity,
-    addr: address,
-  };
-}
-
 // Update load function to correctly handle variable access
 export function load(pos: Pair<number>): LD {
   // Make sure we're using the correct frame level for variable access
