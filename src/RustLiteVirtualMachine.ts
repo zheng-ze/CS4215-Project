@@ -28,12 +28,14 @@ interface VirtualMachineMicrocode {
 }
 
 enum HeapTag {
-  Bool = 0,
-  Number = 1,
-  Blockframe = 2,
-  Callframe = 3,
-  Frame = 5,
-  Struct = 7,
+  VectorStart = 0,
+  VectorNode = 1,
+}
+
+enum TypeTag {
+  Int = 0,
+  Bool = 1,
+  Address = 2,
 }
 
 function peek(array: SUPPORTED_TYPES[], index: number): SUPPORTED_TYPES {
@@ -56,37 +58,123 @@ class Heap {
 
     // Set up the free list chain
     for (let i = 0; i < numWords - 1; i++) {
-      this.set(i * word_size, (i + 1) * word_size);
+      this.set(i * word_size, (i + 1) * word_size, TypeTag.Address);
     }
 
     // Mark the end of the free list
-    this.set((numWords - 1) * word_size, -1);
+    this.set((numWords - 1) * word_size, -1, TypeTag.Address);
   }
 
-  get(index: number): number {
-    return this.data.getFloat64(index);
+  get(index: number): [SUPPORTED_TYPES, TypeTag] {
+    // get type
+    const type = this.get_at_offset(index / word_size, 8);
+    if (type === TypeTag.Bool) {
+      return [Boolean(this.data.getFloat64(index)), TypeTag.Bool];
+    } else if (type === TypeTag.Address) {
+      // For addresses to other vectors, return the address
+      return [this.data.getFloat64(index), TypeTag.Address];
+    }
+    return [this.data.getFloat64(index), TypeTag.Int];
   }
 
-  set(address: number, value: number): void {
-    this.data.setFloat64(address, value);
+  set(address: number, value: SUPPORTED_TYPES, tag: TypeTag): void {
+    // Check if the address is valid
+    if (address < 0) {
+      throw new Error(`Invalid address: ${address}`);
+    }
+    // Check if typetag and value are compatible
+    if (tag === TypeTag.Bool && typeof value !== "boolean") {
+      throw new Error(`Expected boolean value, got ${typeof value}`);
+    }
+    if (tag === TypeTag.Int && typeof value !== "number") {
+      throw new Error(`Expected number value, got ${typeof value}`);
+    }
+    if (tag === TypeTag.Address && !this.isVectorAddress(value as number)) {
+      throw new Error(`Expected address value, got ${typeof value}`);
+    }
+
+    this.data.setFloat64(
+      address,
+      typeof value === "boolean" ? (value ? 1 : 0) : value
+    );
+
+    this.set_at_offset(address, 8, tag);
+  }
+
+  // Helper method to check if a number is a valid vector address
+  isVectorAddress(addr: number): boolean {
+    if (addr < 0 || addr >= this.data.byteLength) {
+      return false;
+    }
+
+    // Check if the tag at addr is VectorStart
+    const tag = this.data.getInt8(addr);
+    return tag === HeapTag.VectorStart;
   }
 
   allocate(tag: HeapTag, size: number): number {
-    if (size > node_size) {
-      throw new Error(
-        `limitation: nodes cannot be larger than ${node_size} words`
-      );
-    }
-
     if (this.free === -1) {
       throw new Error("heap memory exhausted");
     }
 
     const address = this.free;
-    this.free = this.get(this.free);
+    const [free, storedTag] = this.get(this.free);
+    if (storedTag !== TypeTag.Address) {
+      throw new Error(`Free list corrupted at address ${address}`);
+    }
+    this.free = free as number;
     this.data.setInt8(address * word_size, tag);
     this.data.setUint16(address * word_size + size_offset, size);
     return address;
+  }
+
+  // Allocate a vector of size `size`
+  // The first byte is the tag
+  // The second byte is the size of the vector
+  // The other words are the elements of the vector
+  // The vector is stored as a contiguous block of memory
+  allocate_vector(numElements: number): number {
+    if (numElements < 0) {
+      throw new Error(`Vector size cannot be negative`);
+    }
+    const address = this.allocate(HeapTag.VectorStart, 1 + numElements);
+    return address;
+  }
+
+  // Set a node in the vector
+  set_vector_node(
+    address: number,
+    index: number,
+    value: SUPPORTED_TYPES,
+    tag: TypeTag
+  ): void {
+    if (index < 0) {
+      throw new Error(`Index cannot be negative`);
+    }
+    if (this.getTag(address) !== HeapTag.VectorStart) {
+      throw new Error(`Address ${address} is not a vector`);
+    }
+    if (index >= this.getSize(address) - 1) {
+      throw new Error(`Index out of bounds`);
+    }
+
+    this.set(address + 1 + index, value, tag);
+  }
+
+  get_vector_node(address: number, index: number): [SUPPORTED_TYPES, TypeTag] {
+    if (index < 0) throw new Error(`Index cannot be negative`);
+    if (this.getTag(address) !== HeapTag.VectorStart)
+      throw new Error(`Address ${address} is not a vector`);
+    if (index >= this.getSize(address) - 1)
+      throw new Error(`Index out of bounds`);
+
+    return this.get(address + 1 + index);
+  }
+
+  get_vector_size(address: number): number {
+    if (this.getTag(address) !== HeapTag.VectorStart)
+      throw new Error(`Address ${address} is not a vector`);
+    return this.getSize(address) - 1;
   }
 
   get_at_offset(address: number, offset: number): number {
@@ -111,20 +199,6 @@ class Heap {
 
   getSize(address: number): number {
     return this.data.getUint16(address * word_size + size_offset);
-  }
-
-  get_child(address: number, child_index: number): number {
-    return this.get(address + 1 + child_index);
-  }
-
-  set_child(address: number, child_index: number, value: number): void {
-    this.set(address + 1 + child_index, value);
-  }
-
-  get_num_children(address: number): number {
-    return this.getTag(address) === HeapTag.Number
-      ? 0
-      : this.getSize(address) - 1;
   }
 }
 

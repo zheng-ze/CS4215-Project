@@ -1,6 +1,6 @@
 export type SUPPORTED_TYPES = number | boolean;
 
-export const word_size = 8;
+export const word_size = 9; // 8 for data, 1 for type
 export const node_size = 4;
 export const size_offset = 5;
 export const max_words = 2048;
@@ -27,7 +27,6 @@ export interface Pair<T> {
   first: T;
   second: T;
 }
-
 export interface instruction {
   type: instruction_type;
 }
