@@ -66,15 +66,7 @@ interface ScopeInfo {
   frameLevel: number;
   offset: number;
 }
-
-// Add scope tracking to compiler
-let currentFrameLevel = 0;
-let currentOffset = 0;
-const scopeMap = new Map<string, ScopeInfo>();
-
 export function enterScope(num: number): ENTER_SCOPE {
-  currentFrameLevel++;
-  currentOffset = 0;
   return {
     type: instruction_type.ENTER_SCOPE,
     num: num,
@@ -82,13 +74,6 @@ export function enterScope(num: number): ENTER_SCOPE {
 }
 
 export function exitScope(): EXIT_SCOPE {
-  currentFrameLevel--;
-  // Clear variables from the current scope
-  for (const [name, info] of scopeMap.entries()) {
-    if (info.frameLevel === currentFrameLevel + 1) {
-      scopeMap.delete(name);
-    }
-  }
   return {
     type: instruction_type.EXIT_SCOPE,
   };
@@ -100,17 +85,6 @@ let functionScopes: Map<string, ScopeInfo>[] = [];
 // Add a variable to track the current function level
 let currentFunctionLevel = 2; // Start at 2 for the main function
 
-// Update enterFunctionScope to set the correct frame level
-export function enterFunctionScope(): void {
-  functionScopes.push(new Map());
-  currentFrameLevel = currentFunctionLevel;
-  currentOffset = 0;
-}
-
-export function exitFunctionScope(): void {
-  functionScopes.pop();
-}
-
 export function loadFunction(arity: number, address: number): LDF {
   return {
     type: instruction_type.LDF,
@@ -120,17 +94,11 @@ export function loadFunction(arity: number, address: number): LDF {
 }
 
 // Update load function to correctly handle variable access
-export function load(name: string): LD {
-  console.log(scopeMap);
-  const info = scopeMap.get(name);
-  if (!info) {
-    throw new Error(`Undefined variable: ${name}`);
-  }
-  
+export function load(level: number, offset: number): LD {
   // Make sure we're using the correct frame level for variable access
   return {
     type: instruction_type.LD,
-    pos: {first: info.frameLevel, second: info.offset},
+    pos: { first: level, second: offset },
   };
 }
 
@@ -140,9 +108,12 @@ export function assign(name: string, isParameter: boolean = false): ASSIGN {
   if (!info) {
     info = {
       frameLevel: currentFunctionLevel,
-      offset: isParameter ? currentOffset : currentOffset++
+      offset: isParameter ? currentOffset : currentOffset++,
     };
-    console.log(`Adding ${isParameter ? 'parameter' : 'variable'} ${name} to scope:`, info);
+    console.log(
+      `Adding ${isParameter ? "parameter" : "variable"} ${name} to scope:`,
+      info
+    );
     scopeMap.set(name, info);
     if (isParameter) currentOffset++;
   }
