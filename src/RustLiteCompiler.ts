@@ -3,20 +3,18 @@ import {
   BINOP,
   CALL,
   DONE,
+  GOTO,
   ENTER_SCOPE,
   EXIT_SCOPE,
-  GOTO,
   JOF,
   LD,
   LDC,
   LDF,
   POP,
-  Pair,
   RESET,
   SUPPORTED_TYPES,
   TAIL_CALL,
   UNOP,
-  instruction,
   instruction_type,
 } from "./RustLiteTypes";
 
@@ -61,11 +59,6 @@ export function jump(address: number): GOTO {
   };
 }
 
-// Add a new type to track variable scope information
-interface ScopeInfo {
-  frameLevel: number;
-  offset: number;
-}
 export function enterScope(num: number): ENTER_SCOPE {
   return {
     type: instruction_type.ENTER_SCOPE,
@@ -79,12 +72,6 @@ export function exitScope(): EXIT_SCOPE {
   };
 }
 
-// Add function scope tracking
-let functionScopes: Map<string, ScopeInfo>[] = [];
-
-// Add a variable to track the current function level
-let currentFunctionLevel = 2; // Start at 2 for the main function
-
 export function loadFunction(arity: number, address: number): LDF {
   return {
     type: instruction_type.LDF,
@@ -93,33 +80,17 @@ export function loadFunction(arity: number, address: number): LDF {
   };
 }
 
-// Update load function to correctly handle variable access
 export function load(level: number, offset: number): LD {
-  // Make sure we're using the correct frame level for variable access
   return {
     type: instruction_type.LD,
     pos: { first: level, second: offset },
   };
 }
 
-// Update assign to use the current function level
-export function assign(name: string, isParameter: boolean = false): ASSIGN {
-  let info = scopeMap.get(name);
-  if (!info) {
-    info = {
-      frameLevel: currentFunctionLevel,
-      offset: isParameter ? currentOffset : currentOffset++,
-    };
-    console.log(
-      `Adding ${isParameter ? "parameter" : "variable"} ${name} to scope:`,
-      info
-    );
-    scopeMap.set(name, info);
-    if (isParameter) currentOffset++;
-  }
+export function assign(level: number, offset: number): ASSIGN {
   return {
     type: instruction_type.ASSIGN,
-    pos: { first: info.frameLevel, second: info.offset },
+    pos: { first: level, second: offset },
   };
 }
 
