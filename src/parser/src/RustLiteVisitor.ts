@@ -29,11 +29,8 @@ import { FnCallContext } from "./RustLiteParser.js";
 import { VectorTypeContext } from "./RustLiteParser.js";
 import { VectorInitContext } from "./RustLiteParser.js";
 import { VectorInitListContext } from "./RustLiteParser.js";
-import { VectorPushContext } from "./RustLiteParser.js";
-import { VectorPopContext } from "./RustLiteParser.js";
 import { VectorLenContext } from "./RustLiteParser.js";
 import { VectorIndexAccessContext } from "./RustLiteParser.js";
-import { VectorAssignmentContext } from "./RustLiteParser.js";
 import { VectorExprContext } from "./RustLiteParser.js";
 import { PrintlnMacroContext } from "./RustLiteParser.js";
 import { PrintlnArgsContext } from "./RustLiteParser.js";
@@ -204,18 +201,6 @@ export class RustLiteVisitor<Result> extends AbstractParseTreeVisitor<Result> {
      */
     visitVectorInitList?: (ctx: VectorInitListContext) => Result;
     /**
-     * Visit a parse tree produced by `RustLiteParser.vectorPush`.
-     * @param ctx the parse tree
-     * @return the visitor result
-     */
-    visitVectorPush?: (ctx: VectorPushContext) => Result;
-    /**
-     * Visit a parse tree produced by `RustLiteParser.vectorPop`.
-     * @param ctx the parse tree
-     * @return the visitor result
-     */
-    visitVectorPop?: (ctx: VectorPopContext) => Result;
-    /**
      * Visit a parse tree produced by `RustLiteParser.vectorLen`.
      * @param ctx the parse tree
      * @return the visitor result
@@ -227,12 +212,6 @@ export class RustLiteVisitor<Result> extends AbstractParseTreeVisitor<Result> {
      * @return the visitor result
      */
     visitVectorIndexAccess?: (ctx: VectorIndexAccessContext) => Result;
-    /**
-     * Visit a parse tree produced by `RustLiteParser.vectorAssignment`.
-     * @param ctx the parse tree
-     * @return the visitor result
-     */
-    visitVectorAssignment?: (ctx: VectorAssignmentContext) => Result;
     /**
      * Visit a parse tree produced by `RustLiteParser.vectorExpr`.
      * @param ctx the parse tree

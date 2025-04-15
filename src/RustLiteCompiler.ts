@@ -1,10 +1,12 @@
 import {
+  ALLOC_VECTOR,
   ASSIGN,
   BINOP,
   CALL,
   DONE,
   ENTER_SCOPE,
   EXIT_SCOPE,
+  GET_VECTOR,
   GOTO,
   JOF,
   LD,
@@ -13,6 +15,7 @@ import {
   POP,
   Pair,
   RESET,
+  SET_VECTOR,
   SUPPORTED_TYPES,
   TAIL_CALL,
   UNOP,
@@ -126,11 +129,11 @@ export function load(name: string): LD {
   if (!info) {
     throw new Error(`Undefined variable: ${name}`);
   }
-  
+
   // Make sure we're using the correct frame level for variable access
   return {
     type: instruction_type.LD,
-    pos: {first: info.frameLevel, second: info.offset},
+    pos: { first: info.frameLevel, second: info.offset },
   };
 }
 
@@ -140,9 +143,12 @@ export function assign(name: string, isParameter: boolean = false): ASSIGN {
   if (!info) {
     info = {
       frameLevel: currentFunctionLevel,
-      offset: isParameter ? currentOffset : currentOffset++
+      offset: isParameter ? currentOffset : currentOffset++,
     };
-    console.log(`Adding ${isParameter ? 'parameter' : 'variable'} ${name} to scope:`, info);
+    console.log(
+      `Adding ${isParameter ? "parameter" : "variable"} ${name} to scope:`,
+      info
+    );
     scopeMap.set(name, info);
     if (isParameter) currentOffset++;
   }
@@ -175,5 +181,24 @@ export function reset(): RESET {
 export function done(): DONE {
   return {
     type: instruction_type.DONE,
+  };
+}
+
+export function allocate_vector(size: number): ALLOC_VECTOR {
+  return {
+    type: instruction_type.ALLOC_VECTOR,
+    size: size,
+  };
+}
+
+export function set_vector(): SET_VECTOR {
+  return {
+    type: instruction_type.SET_VECTOR,
+  };
+}
+
+export function get_vector(): GET_VECTOR {
+  return {
+    type: instruction_type.GET_VECTOR,
   };
 }

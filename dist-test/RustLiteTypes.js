@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.instruction_type = exports.max_words = exports.size_offset = exports.node_size = exports.word_size = void 0;
-exports.word_size = 8;
+exports.word_size = 9; // 8 for data, 1 for type
 exports.node_size = 4;
 exports.size_offset = 5;
 exports.max_words = 2048;
@@ -22,4 +22,7 @@ var instruction_type;
     instruction_type[instruction_type["TAIL_CALL"] = 12] = "TAIL_CALL";
     instruction_type[instruction_type["RESET"] = 13] = "RESET";
     instruction_type[instruction_type["DONE"] = 14] = "DONE";
+    instruction_type[instruction_type["ALLOC_VECTOR"] = 15] = "ALLOC_VECTOR";
+    instruction_type[instruction_type["SET_VECTOR"] = 16] = "SET_VECTOR";
+    instruction_type[instruction_type["GET_VECTOR"] = 17] = "GET_VECTOR";
 })(instruction_type || (exports.instruction_type = instruction_type = {}));

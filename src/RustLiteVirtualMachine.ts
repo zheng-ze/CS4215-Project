@@ -1,8 +1,11 @@
 import {
+  ALLOC_VECTOR,
   ASSIGN,
+  AddressType,
   BINOP,
   CALL,
   ENTER_SCOPE,
+  GET_VECTOR,
   GOTO,
   JOF,
   LD,
@@ -10,6 +13,7 @@ import {
   LDF,
   Pair,
   RESET,
+  SET_VECTOR,
   SUPPORTED_TYPES,
   TAIL_CALL,
   UNOP,
@@ -38,13 +42,6 @@ enum TypeTag {
   Address = 2,
 }
 
-function peek(array: SUPPORTED_TYPES[], index: number): SUPPORTED_TYPES {
-  if (index < 0 || index >= array.length) {
-    throw new Error("Index out of bounds");
-  }
-  return array.slice(-1 - index)[0];
-}
-
 class Heap {
   data: DataView;
   free: number;
@@ -58,28 +55,40 @@ class Heap {
 
     // Set up the free list chain
     for (let i = 0; i < numWords - 1; i++) {
-      this.set(i * word_size, (i + 1) * word_size, TypeTag.Address);
+      this.set(i, { type: "address", value: i + 1 }, TypeTag.Address);
     }
 
     // Mark the end of the free list
-    this.set((numWords - 1) * word_size, -1, TypeTag.Address);
+    this.set(numWords - 1, { type: "address", value: -1 }, TypeTag.Address);
   }
 
-  get(index: number): [SUPPORTED_TYPES, TypeTag] {
+  get(address: number): [SUPPORTED_TYPES, TypeTag] {
+    if (address < 0 || address >= max_words * word_size) {
+      throw new Error(`Invalid address: ${address}`);
+    }
     // get type
-    const type = this.get_at_offset(index / word_size, 8);
+    const type = this.get_at_offset(address, 8);
+    const storedValue = this.data.getFloat64(address * word_size);
+
     if (type === TypeTag.Bool) {
-      return [Boolean(this.data.getFloat64(index)), TypeTag.Bool];
+      // Convert stored value to boolean
+      // 1 for true, 0 for false
+      return [storedValue === 0 ? false : true, TypeTag.Bool];
     } else if (type === TypeTag.Address) {
       // For addresses to other vectors, return the address
-      return [this.data.getFloat64(index), TypeTag.Address];
+      return [{ type: "address", value: storedValue }, TypeTag.Address];
+    } else if (type === TypeTag.Int) {
+      // For integers, return the value
+      return [storedValue, TypeTag.Int];
+    } else {
+      throw new Error(`Unknown type tag: ${type}`);
     }
-    return [this.data.getFloat64(index), TypeTag.Int];
   }
 
   set(address: number, value: SUPPORTED_TYPES, tag: TypeTag): void {
+    console.log(`Setting value at address ${address}:`, value, tag);
     // Check if the address is valid
-    if (address < 0) {
+    if (address < 0 || address >= max_words * word_size) {
       throw new Error(`Invalid address: ${address}`);
     }
     // Check if typetag and value are compatible
@@ -89,14 +98,26 @@ class Heap {
     if (tag === TypeTag.Int && typeof value !== "number") {
       throw new Error(`Expected number value, got ${typeof value}`);
     }
-    if (tag === TypeTag.Address && !this.isVectorAddress(value as number)) {
+    if (
+      tag === TypeTag.Address &&
+      (typeof value !== "object" ||
+        value.type !== "address" ||
+        typeof value.value !== "number")
+    ) {
       throw new Error(`Expected address value, got ${typeof value}`);
     }
 
-    this.data.setFloat64(
-      address,
-      typeof value === "boolean" ? (value ? 1 : 0) : value
-    );
+    if (tag === TypeTag.Address) {
+      // For addresses to other vectors, store the address
+      let valueToStore = value as AddressType;
+      this.data.setFloat64(address * word_size, valueToStore.value);
+    } else {
+      // For other types, store the value directly
+      // Convert boolean to number (1 for true, 0 for false)
+      let valueToStore =
+        typeof value === "boolean" ? (value ? 1 : 0) : (value as number);
+      this.data.setFloat64(address * word_size, valueToStore);
+    }
 
     this.set_at_offset(address, 8, tag);
   }
@@ -119,10 +140,14 @@ class Heap {
 
     const address = this.free;
     const [free, storedTag] = this.get(this.free);
-    if (storedTag !== TypeTag.Address) {
+    if (
+      storedTag !== TypeTag.Address ||
+      typeof free !== "object" ||
+      free.type !== "address"
+    ) {
       throw new Error(`Free list corrupted at address ${address}`);
     }
-    this.free = free as number;
+    this.free = (free as AddressType).value;
     this.data.setInt8(address * word_size, tag);
     this.data.setUint16(address * word_size + size_offset, size);
     return address;
@@ -417,6 +442,15 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       const assign = instr as ASSIGN;
       const value = this.stack.peek();
 
+      // Validate the value
+      if (
+        typeof value === "object" &&
+        value.type === "address" &&
+        typeof value.value !== "number"
+      ) {
+        throw new Error(`Invalid address value: ${JSON.stringify(value)}`);
+      }
+
       try {
         // Handle different frame levels for assignment
         if (assign.pos.first === 2) {
@@ -633,6 +667,84 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
         `RESET: Returning to address ${returnAddr} with value ${returnValue}`
       );
       this.pc = returnAddr;
+    },
+
+    [instruction_type.ALLOC_VECTOR]: (instr: instruction) => {
+      const alloc = instr as ALLOC_VECTOR;
+      const size = alloc.size;
+      if (size < 0) {
+        throw new Error(`Vector size cannot be negative`);
+      }
+      const address = this.heap.allocate_vector(size);
+      this.stack.push({ type: "address", value: address });
+      console.log(`Allocated vector at address ${address} with size ${size}`);
+    },
+
+    [instruction_type.SET_VECTOR]: (instr: instruction) => {
+      let value = this.stack.pop();
+      const index = this.stack.pop();
+      if (typeof index !== "number" || index < 0) {
+        throw new Error(`Invalid vector index: ${index}`);
+      }
+      let vectorAddr = this.stack.peek();
+      if (typeof vectorAddr !== "object" || vectorAddr.type !== "address") {
+        throw new Error(
+          `Invalid vector address: ${JSON.stringify(vectorAddr)}`
+        );
+      }
+      vectorAddr = vectorAddr.value;
+
+      if (!this.heap.isVectorAddress(vectorAddr))
+        throw new Error("Invalid vector address");
+
+      // Get the type tag for the value
+      let tag = TypeTag.Int;
+      if (typeof value === "boolean") {
+        tag = TypeTag.Bool;
+      } else if (typeof value === "number") {
+        tag = TypeTag.Int;
+      } else if (
+        value &&
+        typeof value === "object" &&
+        value.type === "address"
+      ) {
+        throw new Error("Nested vectors are not supported");
+      } else {
+        throw new Error(`Unsupported value type: ${typeof value}`);
+      }
+
+      // Set the vector node
+      this.heap.set_vector_node(vectorAddr, index, value, tag);
+      console.log(
+        `SET_VECTOR: Set value ${value} at address ${vectorAddr}, index ${index}`
+      );
+    },
+
+    [instruction_type.GET_VECTOR]: (instr: instruction) => {
+      const index = this.stack.pop();
+      if (typeof index !== "number" || index < 0) {
+        throw new Error(`Invalid vector index: ${index}`);
+      }
+      let vectorAddr = this.stack.pop();
+      if (typeof vectorAddr !== "object" || vectorAddr.type !== "address") {
+        throw new Error(
+          `Invalid vector address: ${JSON.stringify(vectorAddr)}`
+        );
+      }
+      vectorAddr = vectorAddr.value;
+
+      if (!this.heap.isVectorAddress(vectorAddr))
+        throw new Error("Invalid vector address");
+
+      // Get the vector node
+      let [value, tag] = this.heap.get_vector_node(vectorAddr, index);
+      if (tag === TypeTag.Address) {
+        throw new Error(`Nested vectors are not supported. Address: ${value}`);
+      }
+      this.stack.push(value);
+      console.log(
+        `GET_VECTOR: Retrieved value ${value} from address ${vectorAddr}, index ${index}`
+      );
     },
   };
 

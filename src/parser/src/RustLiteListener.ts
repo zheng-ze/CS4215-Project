@@ -29,11 +29,8 @@ import { FnCallContext } from "./RustLiteParser.js";
 import { VectorTypeContext } from "./RustLiteParser.js";
 import { VectorInitContext } from "./RustLiteParser.js";
 import { VectorInitListContext } from "./RustLiteParser.js";
-import { VectorPushContext } from "./RustLiteParser.js";
-import { VectorPopContext } from "./RustLiteParser.js";
 import { VectorLenContext } from "./RustLiteParser.js";
 import { VectorIndexAccessContext } from "./RustLiteParser.js";
-import { VectorAssignmentContext } from "./RustLiteParser.js";
 import { VectorExprContext } from "./RustLiteParser.js";
 import { PrintlnMacroContext } from "./RustLiteParser.js";
 import { PrintlnArgsContext } from "./RustLiteParser.js";
@@ -305,26 +302,6 @@ export class RustLiteListener implements ParseTreeListener {
      */
     exitVectorInitList?: (ctx: VectorInitListContext) => void;
     /**
-     * Enter a parse tree produced by `RustLiteParser.vectorPush`.
-     * @param ctx the parse tree
-     */
-    enterVectorPush?: (ctx: VectorPushContext) => void;
-    /**
-     * Exit a parse tree produced by `RustLiteParser.vectorPush`.
-     * @param ctx the parse tree
-     */
-    exitVectorPush?: (ctx: VectorPushContext) => void;
-    /**
-     * Enter a parse tree produced by `RustLiteParser.vectorPop`.
-     * @param ctx the parse tree
-     */
-    enterVectorPop?: (ctx: VectorPopContext) => void;
-    /**
-     * Exit a parse tree produced by `RustLiteParser.vectorPop`.
-     * @param ctx the parse tree
-     */
-    exitVectorPop?: (ctx: VectorPopContext) => void;
-    /**
      * Enter a parse tree produced by `RustLiteParser.vectorLen`.
      * @param ctx the parse tree
      */
@@ -344,16 +321,6 @@ export class RustLiteListener implements ParseTreeListener {
      * @param ctx the parse tree
      */
     exitVectorIndexAccess?: (ctx: VectorIndexAccessContext) => void;
-    /**
-     * Enter a parse tree produced by `RustLiteParser.vectorAssignment`.
-     * @param ctx the parse tree
-     */
-    enterVectorAssignment?: (ctx: VectorAssignmentContext) => void;
-    /**
-     * Exit a parse tree produced by `RustLiteParser.vectorAssignment`.
-     * @param ctx the parse tree
-     */
-    exitVectorAssignment?: (ctx: VectorAssignmentContext) => void;
     /**
      * Enter a parse tree produced by `RustLiteParser.vectorExpr`.
      * @param ctx the parse tree

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RustLiteEvaluator = void 0;
 const antlr4ng_1 = require("antlr4ng");
 const RustLiteParser_1 = require("./parser/src/RustLiteParser");
+const RustLiteTypes_1 = require("./RustLiteTypes");
 const RustLiteCompiler_1 = require("./RustLiteCompiler");
 const runner_1 = require("conductor/dist/conductor/runner");
 const RustLiteLexer_1 = require("./parser/src/RustLiteLexer");
@@ -44,6 +45,8 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         if (mainAddr !== undefined) {
             this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadFunction)(0, mainAddr); // Load the function
             this.instrs[this.wc++] = (0, RustLiteCompiler_1.call)(0); // Call main with 0 arguments
+            // Add a POP instruction to remove the return value from the stack
+            // This prevents the VM from getting stuck in a loop
         }
         this.instrs[this.wc++] = (0, RustLiteCompiler_1.done)(); // End program execution
     }
@@ -215,18 +218,28 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         const [_, names] = this.scanForLocalVars(ctx);
         const numLocals = names.length;
         this.instrs[this.wc++] = (0, RustLiteCompiler_1.enterScope)(numLocals);
+        // Track if we've seen a return statement
+        let hasReturn = false;
         for (let stmt of stmts) {
             if (!stmt)
                 continue;
             try {
                 console.log(`Statement: ${stmt.getText()}`);
+                // Check if this is a return statement
+                if (stmt.returnStmt()) {
+                    hasReturn = true;
+                }
                 this.visitStmt(stmt);
             }
             catch (error) {
                 throw `Error while visiting statement ${stmt.getText()}, with error: ${error}`;
             }
         }
-        this.instrs[this.wc++] = (0, RustLiteCompiler_1.exitScope)();
+        // Only add EXIT_SCOPE if there's no return statement
+        // If there is a return, the RESET instruction will handle popping the frame
+        if (!hasReturn) {
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.exitScope)();
+        }
         // Restore outer scope when exiting
         this.currentScope = outerScope;
     }
@@ -268,7 +281,6 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     visitDeclareStmt(ctx) {
         console.log("Visiting DeclareStmt");
         const typeCtx = ctx.type();
-        const isMutable = ctx.MUT() ? true : false;
         const name = ctx.IDENTIFIER()?.getText();
         if (!name)
             throw new Error("Variable declaration requires a name");
@@ -346,12 +358,12 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         const exprCtx = ctx.expr();
         if (exprCtx) {
             this.visitExpr(exprCtx);
-            this.instrs[this.wc++] = (0, RustLiteCompiler_1.reset)();
         }
         else {
             this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(0);
-            this.instrs[this.wc++] = (0, RustLiteCompiler_1.reset)();
         }
+        // Missing RESET instruction - this is critical!
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.reset)();
     }
     visitFnDeclareStmt(ctx) {
         console.log("Visiting FnDeclareStmt");
@@ -362,35 +374,39 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         // Store function location in table
         this.functionTable.set(fnName, this.wc + 2);
         const [paramTypes, paramNames] = this.processParamList(ctx.paramList());
-        // Create new scope for function
-        const oldScope = new Map(this.currentScope);
-        this.currentScope.clear();
-        // Add parameters to scope
-        paramNames.forEach((param, index) => {
-            this.currentScope.set(param, index);
-        });
-        const paramListCtx = ctx.paramList();
-        const blockCtx = ctx.block();
-        const returnTypeCtx = ctx.returnType();
-        if (!identifier || !blockCtx) {
-            throw new Error("Invalid function declaration");
-        }
-        const [types, names] = this.processParamList(paramListCtx);
-        let returnType = "void";
-        if (returnTypeCtx) {
-            returnType = this.processReturnType(returnTypeCtx);
-            // If return type is not provided, default to void
-        }
-        if (types.length !== names.length) {
-            throw new Error(`Parameter types and names do not match: ${types.length} != ${names.length}`);
-        }
-        const gotoInstr = (0, RustLiteCompiler_1.jump)(0); // 0 is a placeholder
+        // Save the outer scope
+        const outerScope = new Map(this.currentScope);
+        // Create new scope for function parameters instead of clearing
+        this.currentScope = new Map();
+        const gotoInstr = (0, RustLiteCompiler_1.jump)(0);
         this.instrs[this.wc++] = gotoInstr;
+        // Add enter scope instruction with parameter count
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.enterScope)(paramNames.length);
+        // Register parameters in the scope map with proper frame level and offset
+        paramNames.forEach((param, index) => {
+            // Add parameters to current scope first
+            this.currentScope.set(param, index);
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.assign)(param, true);
+            console.log(`Registering parameter ${param} at offset ${index}`);
+        });
+        // Visit the function body
+        const blockCtx = ctx.block();
+        if (!blockCtx)
+            throw new Error("Invalid function declaration");
         this.visitBlock(blockCtx);
-        this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(0); // TODO: Add null as supported type and return it
-        this.instrs[this.wc++] = (0, RustLiteCompiler_1.reset)();
-        gotoInstr.addr = this.wc; // Set the address of the jump instruction to the current instruction count which is after the function body
-        return;
+        // Check if the last instruction is a RESET (return statement)
+        // If not, add a default return with RESET
+        const lastInstr = this.instrs[this.wc - 1];
+        if (!lastInstr || lastInstr.type !== RustLiteTypes_1.instruction_type.RESET) {
+            // Add default return if none exists
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(0);
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.reset)();
+        }
+        // Exit scope is needed but should come after the RESET in the VM execution
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.exitScope)();
+        gotoInstr.addr = this.wc;
+        // Restore outer scope
+        this.currentScope = outerScope;
     }
     visitFnCall(ctx) {
         console.log("Visiting FnCall");
@@ -399,11 +415,16 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         if (fnAddr === undefined) {
             throw new Error(`Undefined function: ${fnName}`);
         }
-        const args = ctx.argList();
-        console.log(args?.expr());
-        const arity = args?.expr()?.length || 0;
-        this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadFunction)(arity, fnAddr);
-        this.instrs[this.wc++] = (0, RustLiteCompiler_1.call)(arity);
+        const args = ctx.argList()?.expr() || [];
+        console.log(`Calling function ${fnName} with ${args.length} arguments`);
+        // Push arguments in FORWARD order (first argument first)
+        // This ensures they'll be in the correct order when popped in the VM
+        for (let i = 0; i < args.length; i++) {
+            this.visitExpr(args[i]);
+        }
+        // Load function and call it
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadFunction)(args.length, fnAddr);
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.call)(args.length);
         return;
     }
     visitVectorExpr(ctx) {
@@ -412,30 +433,44 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     }
     visitVectorInit(ctx) {
         console.log("Visiting VectorInit");
-        return;
+        if (ctx.NEW()) {
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.allocate_vector)(0);
+            return;
+        }
+        if (ctx.vectorInitList()) {
+            const vectorInitList = ctx.vectorInitList();
+            const elements = vectorInitList?.expr();
+            // TODO: Check if type of all elements is the same
+            const length = elements?.length ?? 0;
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.allocate_vector)(length);
+            for (let i = 0; i < length; i++) {
+                if (!elements || !elements[i])
+                    continue;
+                this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(i); // Push index
+                this.visitExpr(elements[i]); // Push value
+                this.instrs[this.wc++] = (0, RustLiteCompiler_1.set_vector)(); // Set value at index
+            }
+            this.instrs[this.wc++] = (0, RustLiteCompiler_1.pop)(); // Pop the vector reference
+        }
     }
     visitVectorType(ctx) {
         console.log("Visiting Type");
         return;
     }
-    visitVectorAssignment(ctx) {
-        console.log("Visiting VectorAssignment");
-        return;
-    }
     visitVectorIndexAccess(ctx) {
         console.log("Visiting VectorIndexAccess");
+        const vector = ctx.IDENTIFIER;
+        const index = ctx.arithExpr();
+        if (!vector || !index) {
+            throw new Error("Invalid vector index access");
+        }
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.load)(vector.toString()); // Load vector reference
+        this.visitArithExpr(index); // Load index
+        this.instrs[this.wc++] = (0, RustLiteCompiler_1.get_vector)(); // Get value at index
         return;
     }
     visitVectorLen(ctx) {
         console.log("Visiting VectorLen");
-        return;
-    }
-    visitVectorPop(ctx) {
-        console.log("Visiting VectorPop");
-        return;
-    }
-    visitVectorPush(ctx) {
-        console.log("Visiting VectorPush");
         return;
     }
     visitPrintlnArgs(ctx) {
