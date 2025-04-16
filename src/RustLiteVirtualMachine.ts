@@ -3,6 +3,7 @@ import {
   BINOP,
   CALL,
   ENTER_SCOPE,
+  EXIT_SCOPE,
   GOTO,
   JOF,
   LD,
@@ -15,12 +16,12 @@ import {
   UNOP,
   instruction,
   instruction_type,
+  max_words,
   node_size,
   size_offset,
   word_size,
-  max_words,
-  EXIT_SCOPE,
 } from "./RustLiteTypes";
+
 import { RustLiteStack } from "./RustLiteStack";
 import { off } from "process";
 
@@ -182,11 +183,11 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   }
 
   microcode: VirtualMachineMicrocode = {
-    [instruction_type.LDC]: this.handle_ldc_instruction,
+    [instruction_type.LDC]: this.handle_ldc_instruction.bind(this),
 
-    [instruction_type.UNOP]: this.handle_unop_instruction,
+    [instruction_type.UNOP]: this.handle_unop_instruction.bind(this),
 
-    [instruction_type.BINOP]: this.handle_binop_instruction,
+    [instruction_type.BINOP]: this.handle_binop_instruction.bind(this),
 
     [instruction_type.POP]: (instr: instruction) => {
       this.stack.pop();
@@ -201,17 +202,17 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       }
     },
 
-    [instruction_type.GOTO]: this.handle_goto_instr,
+    [instruction_type.GOTO]: this.handle_goto_instr.bind(this),
 
-    [instruction_type.ENTER_SCOPE]: this.handle_enter_scope,
+    [instruction_type.ENTER_SCOPE]: this.handle_enter_scope.bind(this),
 
-    [instruction_type.EXIT_SCOPE]: this.handle_exit_scope,
+    [instruction_type.EXIT_SCOPE]: this.handle_exit_scope.bind(this),
 
-    [instruction_type.LD]: this.handle_load_instruction,
+    [instruction_type.LD]: this.handle_load_instruction.bind(this),
 
-    [instruction_type.ASSIGN]: this.handle_assign_instruction,
+    [instruction_type.ASSIGN]: this.handle_assign_instruction.bind(this),
 
-    [instruction_type.LDF]: this.handle_ldf_instruction,
+    [instruction_type.LDF]: this.handle_ldf_instruction.bind(this),
 
     // [instruction_type.CALL]: (instr: instruction) => {
     //   const call = instr as CALL;
@@ -315,7 +316,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     //   );
     // },
 
-    [instruction_type.RESET]: this.handle_reset_instr,
+    [instruction_type.RESET]: this.handle_reset_instr.bind(this),
   };
 
   //Load Constant, for example when we are just calling a primitive value like 1;
@@ -418,6 +419,9 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   //GOTO, updates the pointer of the current instruction to the index/address specified in the GOTO instruction
   private handle_goto_instr(inst: instruction) {
     const goto = inst as GOTO;
+    console.log(`Jumping to address ${goto.addr}`);
+    // console.log("Current PC:", this.pc);
+    console.log("This: ", this);
     this.pc = goto.addr;
   }
 
