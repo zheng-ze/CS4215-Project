@@ -213,113 +213,114 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
     [instruction_type.LDF]: this.handle_ldf_instruction,
 
-    [instruction_type.CALL]: (instr: instruction) => {
-      const call = instr as CALL;
-      const arity = call.arity;
-      // Get function info from stack (order is now reversed from LDF)
-      const functionArity = this.stack.pop();
-      const functionPC = this.stack.pop();
+    // [instruction_type.CALL]: (instr: instruction) => {
+    //   const call = instr as CALL;
+    //   const arity = call.arity;
+    //   // Get function info from stack (order is now reversed from LDF)
+    //   const functionArity = this.stack.pop();
+    //   const functionPC = this.stack.pop();
 
-      if (functionArity !== arity) {
-        throw new Error(
-          `Function expected ${functionArity} arguments but got ${arity}`
-        );
-      }
+    //   if (functionArity !== arity) {
+    //     throw new Error(
+    //       `Function expected ${functionArity} arguments but got ${arity}`
+    //     );
+    //   }
 
-      // Set return address to current PC
-      const returnAddr = this.pc;
-      console.log(
-        `Setting return address to ${returnAddr} for function call to PC=${functionPC}`
-      );
+    //   // Set return address to current PC
+    //   const returnAddr = this.pc;
+    //   console.log(
+    //     `Setting return address to ${returnAddr} for function call to PC=${functionPC}`
+    //   );
 
-      // Store arguments temporarily
-      const args: SUPPORTED_TYPES[] = [];
-      console.log("In Call fn");
-      for (let i = 0; i < arity; i++) {
-        args[i] = this.stack.pop();
-      }
+    //   // Store arguments temporarily
+    //   const args: SUPPORTED_TYPES[] = [];
+    //   console.log("In Call fn");
+    //   for (let i = 0; i < arity; i++) {
+    //     args[i] = this.stack.pop();
+    //   }
 
-      console.log(args);
+    //   console.log(args);
 
-      // Create a new frame for the function with enough space for all parameters
-      const frameSize = arity;
-      this.stack.pushFrame(frameSize, returnAddr);
+    //   // Create a new frame for the function with enough space for all parameters
+    //   const frameSize = arity;
+    //   this.stack.pushFrame(returnAddr);
 
-      // Double-check that the return address is set correctly
-      this.stack.setReturnAddress(returnAddr);
+    //   // Double-check that the return address is set correctly
+    //   this.stack.setReturnAddress(returnAddr);
 
-      // Store arguments in the new frame in the correct order
-      for (let i = 0; i < arity; i++) {
-        // The arguments are popped in reverse order from the stack
-        // For a call like sum(x, y), the stack will have [y, x]
-        // So we need to store them in the correct order in the frame
-        this.stack.setLocalInFrame(
-          this.stack.getFrameCount() - 1,
-          i,
-          args[arity - 1 - i]
-        );
-        console.log(`Setting argument ${i} to value ${args[arity - 1 - i]}`);
-      }
+    //   // Store arguments in the new frame in the correct order
+    //   for (let i = 0; i < arity; i++) {
+    //     // The arguments are popped in reverse order from the stack
+    //     // For a call like sum(x, y), the stack will have [y, x]
+    //     // So we need to store them in the correct order in the frame
+    //     this.stack.setLocalInFrame(
+    //       this.stack.getFrameCount() - 1,
+    //       i,
+    //       args[arity - 1 - i]
+    //     );
+    //     console.log(`Setting argument ${i} to value ${args[arity - 1 - i]}`);
+    //   }
 
-      // Update program counter
-      this.pc = Number(functionPC);
+    //   // Update program counter
+    //   this.pc = Number(functionPC);
 
-      console.log(
-        `CALL: Jumping to function at PC=${functionPC}, return address=${returnAddr}, frame size=${frameSize}`
-      );
-    },
+    //   console.log(
+    //     `CALL: Jumping to function at PC=${functionPC}, return address=${returnAddr}, frame size=${frameSize}`
+    //   );
+    // },
 
-    [instruction_type.TAIL_CALL]: (instr: instruction) => {
-      const tail_call = instr as TAIL_CALL;
-      const arity = tail_call.arity;
+    // [instruction_type.TAIL_CALL]: (instr: instruction) => {
+    //   const tail_call = instr as TAIL_CALL;
+    //   const arity = tail_call.arity;
 
-      // Get function info from stack
-      const functionArity = this.stack.pop();
-      const functionPC = this.stack.pop();
+    //   // Get function info from stack
+    //   const functionArity = this.stack.pop();
+    //   const functionPC = this.stack.pop();
 
-      if (functionArity !== arity) {
-        throw new Error(
-          `Function expected ${functionArity} arguments but got ${arity}`
-        );
-      }
+    //   if (functionArity !== arity) {
+    //     throw new Error(
+    //       `Function expected ${functionArity} arguments but got ${arity}`
+    //     );
+    //   }
 
-      // For tail calls, we need to preserve the return address
-      const returnAddr = this.stack.getReturnAddress();
-      if (returnAddr === undefined) {
-        throw new Error("Cannot perform tail call without a return address");
-      }
+    //   // For tail calls, we need to preserve the return address
+    //   const returnAddr = this.stack.getReturnAddress();
+    //   if (returnAddr === undefined) {
+    //     throw new Error("Cannot perform tail call without a return address");
+    //   }
 
-      // Store arguments temporarily
-      const args: SUPPORTED_TYPES[] = [];
-      for (let i = 0; i < arity; i++) {
-        args[i] = this.stack.pop();
-      }
+    //   // Store arguments temporarily
+    //   const args: SUPPORTED_TYPES[] = [];
+    //   for (let i = 0; i < arity; i++) {
+    //     args[i] = this.stack.pop();
+    //   }
 
-      // Pop the current frame but remember its return address
-      this.stack.popFrame();
+    //   // Pop the current frame but remember its return address
+    //   this.stack.popFrame();
 
-      // Create a new frame with the same return address
-      const frameSize = Math.max(arity, 1);
-      this.stack.pushFrame(frameSize, returnAddr);
+    //   // Create a new frame with the same return address
+    //   const frameSize = Math.max(arity, 1);
+    //   this.stack.pushFrame(returnAddr);
 
-      // Store arguments in the new frame
-      for (let i = 0; i < arity; i++) {
-        this.stack.setLocal(i, args[arity - 1 - i]);
-      }
+    //   // Store arguments in the new frame
+    //   for (let i = 0; i < arity; i++) {
+    //     this.stack.setLocal(i, args[arity - 1 - i]);
+    //   }
 
-      // Update PC
-      this.pc = Number(functionPC);
+    //   // Update PC
+    //   this.pc = Number(functionPC);
 
-      console.log(
-        `TAIL_CALL: Jumping to function at PC=${functionPC}, preserving return address=${returnAddr}`
-      );
-    },
+    //   console.log(
+    //     `TAIL_CALL: Jumping to function at PC=${functionPC}, preserving return address=${returnAddr}`
+    //   );
+    // },
 
     [instruction_type.RESET]: this.handle_reset_instr,
   };
 
   //Load Constant, for example when we are just calling a primitive value like 1;
-  private handle_ldc_instruction(ldc: LDC) {
+  private handle_ldc_instruction(instr: instruction) {
+    const ldc = instr as LDC;
     if (typeof ldc.val === "number" || typeof ldc.val === "boolean") {
       // Store primitives directly on the stack
       this.stack.push(ldc.val);
@@ -329,7 +330,8 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   }
 
   //Unary Operator Handling for default operations with only one argument like ! or (-)
-  private handle_unop_instruction(unop: UNOP) {
+  private handle_unop_instruction(instr: instruction) {
+    const unop = instr as UNOP;
     const arg = this.stack.pop();
     const result = this.apply_unop(unop.sym, arg);
     this.stack.push(result);
@@ -351,7 +353,8 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   //Binary Operator Handling for default operations with two arguments
   //Pre Condition: left and right arguments should have already been pushed onto the stack in the order [left, right]
 
-  private handle_binop_instruction(binop: BINOP) {
+  private handle_binop_instruction(instr: instruction) {
+    const binop = instr as BINOP;
     const right = this.stack.pop();
     const left = this.stack.pop();
     const result = this.apply_binop(binop.sym, left, right);
@@ -413,22 +416,24 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   }
 
   //GOTO, updates the pointer of the current instruction to the index/address specified in the GOTO instruction
-  private handle_goto_instr(goto: GOTO) {
+  private handle_goto_instr(inst: instruction) {
+    const goto = inst as GOTO;
     this.pc = goto.addr;
   }
 
   //Enters a new scope and creates a new frame on the stack
-  private handle_enter_scope(instr: ENTER_SCOPE) {
+  private handle_enter_scope(instr: instruction) {
     this.stack.pushFrame();
   }
 
   //Exits a scope by popping frame from stack and resetting stack pointer to previous base of frame
-  private handle_exit_scope(instr: EXIT_SCOPE) {
+  private handle_exit_scope(instr: instruction) {
     this.stack.popFrame();
   }
 
   //Loads value into stack by getting values stack frame
-  private handle_load_instruction(instr: LD) {
+  private handle_load_instruction(ins: instruction) {
+    const instr = ins as LD;
     const frame_index = instr?.pos?.first;
     const offset = instr?.pos?.second;
     const value = this.stack.getLocalFromFrame(frame_index, offset);
@@ -436,20 +441,24 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   }
 
   //Assigns a value to the current scope by pushing it onto the stack
-  private handle_assign_instruction(instr: ASSIGN) {
+  private handle_assign_instruction(inst: instruction) {
+    const instr = inst as ASSIGN;
     this.stack.push(instr.pos.first);
   }
 
   //Loads a function into memory by creating a new frame on the stack with return address at current pc + 1
-  private handle_ldf_instruction(instr: LDF) {
+  private handle_ldf_instruction(instr: instruction) {
+    const ldf = instr as LDF;
     this.stack.pushFrame(this.pc++);
-    this.pc = instr.addr;
+    this.pc = ldf.addr;
   }
 
-  private handle_reset_instr(instr: RESET) {
+  private handle_reset_instr(instr: instruction) {
     // Get the return address from the current frame
     const returnAddr = this.stack.getReturnAddress();
-
+    if (returnAddr == undefined) {
+      throw Error("Return Address cannot be undefined");
+    }
     // Get the return value from the top of the stack
     const returnValue = this.stack.peek();
     console.log(`Return value before frame pop: ${returnValue}`);

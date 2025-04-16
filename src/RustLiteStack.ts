@@ -230,11 +230,6 @@ export class RustLiteStack {
     this.stackPointer = currentFrame.basePointer; // Reset stack pointer to base of current frame
   }
 
-  // Get the current frame pointer
-  public getCurrentFramePointer(): number {
-    return this.framePointer;
-  }
-
   // Get the number of frames
   public getFrameCount(): number {
     return this.frames.length;
@@ -322,51 +317,51 @@ export class RustLiteStack {
     return value;
   }
 
-  // Set a local variable in a specific frame by index
-  public setLocalInFrame(
-    frameIndex: number,
-    offset: number,
-    value: SUPPORTED_TYPES
-  ): void {
-    if (frameIndex < 0 || frameIndex >= this.frames.length) {
-      throw new Error(
-        `Invalid frame index: ${frameIndex}, total frames: ${this.frames.length}`
-      );
-    }
+  // // Set a local variable in a specific frame by index
+  // public setLocalInFrame(
+  //   frameIndex: number,
+  //   offset: number,
+  //   value: SUPPORTED_TYPES
+  // ): void {
+  //   if (frameIndex < 0 || frameIndex >= this.frames.length) {
+  //     throw new Error(
+  //       `Invalid frame index: ${frameIndex}, total frames: ${this.frames.length}`
+  //     );
+  //   }
 
-    const frame = this.frames[frameIndex];
-    if (offset < 0 || offset >= frame.frameSize) {
-      throw new Error(
-        `Invalid frame offset: ${offset}, frame size: ${frame.frameSize}`
-      );
-    }
+  //   const frame = this.frames[frameIndex];
+  //   if (offset < 0 || offset >= frame.frameSize) {
+  //     throw new Error(
+  //       `Invalid frame offset: ${offset}, frame size: ${frame.frameSize}`
+  //     );
+  //   }
 
-    const index = frame.basePointer + offset;
-    const address = index * word_size;
+  //   const index = frame.basePointer + offset;
+  //   const address = index * word_size;
 
-    // Check if this value is borrowed immutably
-    if (
-      frame.borrowedValues &&
-      frame.borrowedValues.has(address) &&
-      !frame.borrowedValues.get(address)
-    ) {
-      throw new Error(
-        `Cannot modify a value that is borrowed immutably at offset ${offset}`
-      );
-    }
+  //   // Check if this value is borrowed immutably
+  //   if (
+  //     frame.borrowedValues &&
+  //     frame.borrowedValues.has(address) &&
+  //     !frame.borrowedValues.get(address)
+  //   ) {
+  //     throw new Error(
+  //       `Cannot modify a value that is borrowed immutably at offset ${offset}`
+  //     );
+  //   }
 
-    console.log(
-      `Setting value ${value} at frame ${frameIndex}, offset ${offset} (address ${address})`
-    );
+  //   console.log(
+  //     `Setting value ${value} at frame ${frameIndex}, offset ${offset} (address ${address})`
+  //   );
 
-    // Store the value
-    if (typeof value === "boolean") {
-      this.data.setFloat64(address, value ? 1 : 0, true);
-    } else {
-      this.data.setFloat64(address, Number(value), true);
-    }
+  //   // Store the value
+  //   if (typeof value === "boolean") {
+  //     this.data.setFloat64(address, value ? 1 : 0, true);
+  //   } else {
+  //     this.data.setFloat64(address, Number(value), true);
+  //   }
 
-    // Track the lifetime of this value
-    frame.lifetimes.set(address, this.scopeDepth);
-  }
+  //   // Track the lifetime of this value
+  //   frame.lifetimes.set(address, this.scopeDepth);
+  // }
 }
