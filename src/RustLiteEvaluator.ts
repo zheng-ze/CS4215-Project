@@ -285,17 +285,25 @@ class RustLiteEvaluatorVisitor
 
   visitBlock(ctx: BlockContext): void {
     console.log("Visiting Block");
-    if (ctx.blockContent()) return this.visitBlockContent(ctx.blockContent());
+    const blockContentCtx = ctx.blockContent();
+    if (blockContentCtx) return this.visitBlockContent(blockContentCtx);
+  }
+
+  visitFnBlock(ctx: BlockContext, params: string[]): void {
+    console.log("Visiting FnBlock");
+    const blockContentCtx = ctx.blockContent();
+    if (blockContentCtx)
+      return this.visitFnBlockContent(blockContentCtx, params);
   }
 
   visitBlockContent(ctx: BlockContentContext): void {
-    // Save outer scope
+    console.log("Visiting BlockContent");
+    // Save the scope
     let currentScope = new Map<string, number>();
     this.scopeList.push(currentScope);
-    console.log("Visiting BlockContent");
     const stmts = ctx.stmt();
 
-    // TODO: Get num of locals from the context
+    // Find the number of local variables
     const [_, names] = this.scanForLocalVars(ctx);
     const numLocals = names.length;
     this.instrs[this.wc++] = enterScope(numLocals);
@@ -357,6 +365,53 @@ class RustLiteEvaluatorVisitor
       }
     }
     return [types, names];
+  }
+
+  visitFnBlockContent(ctx: BlockContentContext, params: string[]): void {
+    console.log("Visiting FnBlockContent");
+    let currentScope = new Map<string, number>();
+    this.scopeList.push(currentScope);
+    const stmts = ctx.stmt();
+
+    // Find the number of local variables
+    const [_, names] = this.scanForLocalVars(ctx);
+    const numLocals = names.length;
+    this.instrs[this.wc++] = enterScope(numLocals + params.length);
+
+    for (let i = 0; i < params.length; i++) {
+      const name = params[i];
+      const offset = currentScope.size;
+      currentScope.set(name, offset);
+      this.instrs[this.wc++] = assign(this.scopeList.length - 1, offset);
+    }
+
+    // Track if we've seen a return statement
+    let hasReturn = false;
+
+    for (let stmt of stmts) {
+      if (!stmt) continue;
+      try {
+        console.log(`Statement: ${stmt.getText()}`);
+
+        // Check if this is a return statement
+        if (stmt.returnStmt()) {
+          hasReturn = true;
+        }
+
+        this.visitStmt(stmt);
+      } catch (error) {
+        throw `Error while visiting statement ${stmt.getText()}, with error: ${error}`;
+      }
+    }
+
+    // Only add EXIT_SCOPE if there's no return statement
+    // If there is a return, the RESET instruction will handle popping the frame
+    if (!hasReturn) {
+      this.instrs[this.wc++] = exitScope();
+    }
+
+    // Restore outer scope when exiting
+    this.scopeList.pop();
   }
 
   visitExprStmt(ctx: ExprStmtContext): void {
@@ -486,15 +541,7 @@ class RustLiteEvaluatorVisitor
     // Visit the function body
     const blockCtx = ctx.block();
     if (!blockCtx) throw new Error("Invalid function declaration");
-    this.visitBlock(blockCtx);
-
-    // Register parameters in the scope map with proper frame level and offset
-    paramNames.forEach((param, index) => {
-      // Add parameters to current scope first
-      fnParams.set(param, index);
-      this.instrs[this.wc++] = assign(this.scopeList.length - 1, index);
-      console.log(`Registering parameter ${param} at offset ${index}`);
-    });
+    this.visitFnBlock(blockCtx, paramNames);
 
     // Check if the last instruction is a RESET (return statement)
     // If not, add a default return with RESET
@@ -518,7 +565,7 @@ class RustLiteEvaluatorVisitor
     console.log(`Visiting FnCall: ${ctx.getText()}`);
     const fnName = ctx.IDENTIFIER().getText();
     const fnAddr = this.functionTable.get(fnName);
-    if (fnAddr === undefined) {
+    if (!fnAddr) {
       throw new Error(`Undefined function: ${fnName}`);
     }
     const args = ctx.argList()?.expr() || [];
