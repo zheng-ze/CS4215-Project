@@ -37,6 +37,7 @@ export class RustLiteStack {
       throw error(`Data type not supported: ${typeof value}`);
     }
     this.data.setFloat64(this.stackPointer, val, true);
+    this.stackPointer += word_size;
   }
 
   public pop(): SUPPORTED_TYPES {
