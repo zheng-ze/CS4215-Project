@@ -36,6 +36,7 @@ export class RustLiteStack {
     } else {
       throw error(`Data type not supported: ${typeof value}`);
     }
+    console.log(`Set value: ${val}`);
     this.data.setFloat64(this.stackPointer, val, true);
     this.stackPointer += word_size;
   }
@@ -45,7 +46,7 @@ export class RustLiteStack {
       throw new Error("Value stack is empty");
     }
     this.stackPointer -= word_size;
-    let res = this.data.getFloat64(this.stackPointer);
+    let res = this.data.getFloat64(this.stackPointer, true);
     return res;
   }
 
@@ -54,7 +55,7 @@ export class RustLiteStack {
     if (this.stackPointer < 0) {
       throw new Error("Value stack is empty");
     }
-    return this.data.getFloat64(this.stackPointer);
+    return this.data.getFloat64(this.stackPointer, true);
   }
 
   // Create a new stack frame with specified size
@@ -102,11 +103,6 @@ export class RustLiteStack {
     const currentFrame = this.frames[this.frames.length - 1];
     if (!currentFrame) {
       throw new Error("No active frame");
-    }
-    if (offset < 0 || offset > currentFrame.frameSize) {
-      throw new Error(
-        `Invalid frame offset: ${offset}, frame size: ${currentFrame.frameSize}`
-      );
     }
     const index = currentFrame.basePointer + offset;
 
@@ -276,10 +272,8 @@ export class RustLiteStack {
     }
 
     const frame = this.frames[frameIndex];
-    if (offset < 0 || offset >= frame.frameSize) {
-      throw new Error(
-        `Invalid frame offset: ${offset}, frame size: ${frame.frameSize}`
-      );
+    if (frameIndex >= this.frames.length) {
+      throw Error("Invalid frame index");
     }
 
     const index = frame.basePointer + offset;

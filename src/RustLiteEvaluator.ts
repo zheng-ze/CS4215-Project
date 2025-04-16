@@ -151,6 +151,8 @@ class RustLiteEvaluatorVisitor
   }
 
   findParam(name: string) {
+    console.log(`Finding param: ${name}}`);
+    console.log(`Current Scope List: ${this.scopeList}`);
     for (let i = this.scopeList.length - 1; i >= 0; i--) {
       const currScope = this.scopeList[i];
       let offset = currScope.get(name);
@@ -382,7 +384,8 @@ class RustLiteEvaluatorVisitor
       const name = params[i];
       const offset = currentScope.size;
       currentScope.set(name, offset);
-      this.instrs[this.wc++] = assign(this.scopeList.length - 1, offset);
+      //Might need to change to a load here
+      //this.instrs[this.wc++] = assign(this.scopeList.length - 1, offset);
     }
 
     // Track if we've seen a return statement
@@ -439,8 +442,6 @@ class RustLiteEvaluatorVisitor
       // Default initialization
       this.instrs[this.wc++] = loadConstant(0);
     }
-
-    this.instrs[this.wc++] = assign(this.scopeList.length - 1, offset);
     return;
   }
 
@@ -529,9 +530,9 @@ class RustLiteEvaluatorVisitor
     const [paramTypes, paramNames] = this.processParamList(ctx.paramList());
     console.log(`Params: ${paramNames}`);
 
-    // Create new scope for function parameters instead of clearing
-    const currentScope = new Map<string, number>();
-    this.scopeList.push(currentScope);
+    // // Create new scope for function parameters instead of clearing
+    // const currentScope = new Map<string, number>();
+    // this.scopeList.push(currentScope);
 
     const gotoInstr: GOTO = jump(0);
     this.instrs[this.wc++] = gotoInstr;

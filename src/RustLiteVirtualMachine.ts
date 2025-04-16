@@ -174,7 +174,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
     // Return the value directly from stack since we store primitives there
     console.log(this.stack.dump());
-    return this.stack.peek();
+    return this.stack.pop();
   }
 
   reset(): void {
@@ -360,6 +360,9 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     const right = this.stack.pop();
     const left = this.stack.pop();
     const result = this.apply_binop(binop.sym, left, right);
+    console.log(
+      `Applied BINOP: ${binop.sym}, LEFT: ${left}, RIGHT: ${right}, RESULT: ${result}`
+    );
     this.stack.push(result);
   }
 
@@ -466,7 +469,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       throw Error("Return Address cannot be undefined");
     }
     // Get the return value from the top of the stack
-    const returnValue = this.stack.peek();
+    const returnValue = this.stack.pop();
     console.log(`Return value before frame pop: ${returnValue}`);
 
     //Need to pop frames until we completely exit the function
