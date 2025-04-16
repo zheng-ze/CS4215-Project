@@ -173,6 +173,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     }
 
     // Return the value directly from stack since we store primitives there
+    console.log(this.stack.dump());
     return this.stack.peek();
   }
 

@@ -51,7 +51,7 @@ export class RustLiteStack {
 
   // Peek at the top value without popping
   public peek(): SUPPORTED_TYPES {
-    if (this.stackPointer === 0) {
+    if (this.stackPointer < 0) {
       throw new Error("Value stack is empty");
     }
     return this.data.getFloat64(this.stackPointer);
@@ -118,39 +118,6 @@ export class RustLiteStack {
     const value = this.data.getFloat64(index * word_size, true);
     console.log(`Value: ${value}`);
     return value;
-  }
-
-  // Set a local variable in the current frame
-  public setLocal(offset: number, value: SUPPORTED_TYPES): void {
-    const currentFrame = this.frames[this.frames.length - 1];
-    if (!currentFrame) {
-      throw new Error("No active frame");
-    }
-    if (offset < 0 || offset >= currentFrame.frameSize) {
-      throw new Error(
-        `Invalid frame offset: ${offset}, frame size: ${currentFrame.frameSize}`
-      );
-    }
-
-    const index = currentFrame.basePointer + offset;
-    const address = index * word_size;
-
-    // Check if this value is borrowed immutably
-    if (
-      currentFrame.borrowedValues.has(address) &&
-      !currentFrame.borrowedValues.get(address)
-    ) {
-      throw new Error(
-        `Cannot modify a value that is borrowed immutably at offset ${offset}`
-      );
-    }
-
-    // Store the value
-    let storageValue = typeof value === "number" ? value : value ? 1 : 0;
-    this.data.setFloat64(address, storageValue, true);
-
-    // Track the lifetime of this value
-    currentFrame.lifetimes.set(address, this.frames.length);
   }
 
   // Borrow a value (immutably or mutably)
@@ -247,6 +214,7 @@ export class RustLiteStack {
   // Get a specific frame
   public getFrame(index: number): StackFrame {
     if (index < 0 || index >= this.frames.length) {
+      this.dump();
       throw new Error(`Invalid frame index: ${index}`);
     }
     return this.frames[index];
