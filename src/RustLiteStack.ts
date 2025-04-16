@@ -1,3 +1,4 @@
+import { error } from "console";
 import {
   GOTO,
   SUPPORTED_TYPES,
@@ -19,7 +20,6 @@ export class RustLiteStack {
   private data: DataView; // Actual memory storage for stack values
   private stackPointer: number = 0; // Points to the next free slot on the stack
   private frames: StackFrame[] = []; // Metadata about frames
-  private valueStack: SUPPORTED_TYPES[] = []; // Separate stack for temporary values
 
   constructor() {
     // Initialize the stack memory
@@ -27,25 +27,33 @@ export class RustLiteStack {
     this.data = new DataView(buffer);
   }
 
-  // Push a value onto the value stack (for temporary values during expression evaluation)
-  public push(value: SUPPORTED_TYPES): void {
-    this.valueStack.push(value);
+  public push(value: SUPPORTED_TYPES) {
+    let val;
+    if (typeof value === "boolean") {
+      val = value ? 1 : 0;
+    } else if (typeof value === "number") {
+      val = value;
+    } else {
+      throw error(`Data type not supported: ${typeof value}`);
+    }
+    this.data.setFloat64(this.stackPointer, val, true);
   }
 
-  // Pop a value from the value stack
   public pop(): SUPPORTED_TYPES {
-    if (this.valueStack.length === 0) {
-      throw new Error("Value stack underflow");
+    if (this.stackPointer === 0) {
+      throw new Error("Value stack is empty");
     }
-    return this.valueStack.pop()!;
+    this.stackPointer -= word_size;
+    let res = this.data.getFloat64(this.stackPointer);
+    return res;
   }
 
   // Peek at the top value without popping
   public peek(): SUPPORTED_TYPES {
-    if (this.valueStack.length === 0) {
+    if (this.stackPointer === 0) {
       throw new Error("Value stack is empty");
     }
-    return this.valueStack[this.valueStack.length - 1];
+    return this.data.getFloat64(this.stackPointer);
   }
 
   // Create a new stack frame with specified size
@@ -247,17 +255,12 @@ export class RustLiteStack {
   public reset(): void {
     this.stackPointer = 0;
     this.frames = [];
-    this.valueStack = [];
   }
 
   // Debug dump of the stack state
   public dump(): void {
     console.log("=== STACK DUMP ===");
     console.log(`Stack pointer: ${this.stackPointer}`);
-    console.log(
-      `Value stack (${this.valueStack.length} items):`,
-      this.valueStack
-    );
 
     console.log(`Frames (${this.frames.length}):`);
     this.frames.forEach((frame, i) => {

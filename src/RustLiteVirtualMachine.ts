@@ -447,7 +447,8 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   //Assigns a value to the current scope by pushing it onto the stack
   private handle_assign_instruction(inst: instruction) {
     const instr = inst as ASSIGN;
-    this.stack.push(instr.pos.first);
+    const val = this.stack.getLocalFromFrame(instr.pos.first, instr.pos.second);
+    this.stack.push(val);
   }
 
   //Loads a function into memory by creating a new frame on the stack with return address at current pc + 1
