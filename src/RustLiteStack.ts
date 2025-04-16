@@ -57,7 +57,7 @@ export class RustLiteStack {
     const newFrame: StackFrame = {
       basePointer: this.stackPointer,
       frameSize: 0,
-      returnAddress: this.getReturnAddress(),
+      returnAddress: returnAddress || this.getReturnAddress(),
       borrowedValues: new Map(),
       lifetimes: new Map(),
     };
