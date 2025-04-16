@@ -289,12 +289,13 @@ class RustLiteEvaluatorVisitor
 
     // TODO: Get num of locals from the context
     const [_, names] = this.scanForLocalVars(ctx);
+    console.log(`Local variables: ${names.toString()}`);
     const numLocals = names.length;
     this.instrs[this.wc++] = enterScope(numLocals);
 
     // Track if we've seen a return statement
     let hasReturn = false;
-
+    console.log(`Number of statements: ${stmts.length}`);
     for (let stmt of stmts) {
       if (!stmt) continue;
       try {
@@ -334,16 +335,16 @@ class RustLiteEvaluatorVisitor
       if (declareStmt) {
         const type = declareStmt.type();
         const name = declareStmt.IDENTIFIER();
-        if (type && name) {
-          types.push(type.getText());
+        if (name) {
+          types.push(type?.getText() ?? "unknown");
           names.push(name.getText());
         }
       }
       if (fnDeclareStmt) {
         const fnName = fnDeclareStmt.IDENTIFIER();
         const retType = fnDeclareStmt.returnType();
-        if (fnName && retType) {
-          types.push(retType.getText());
+        if (fnName) {
+          types.push(retType?.getText() ?? "void");
           names.push(fnName.getText());
         }
       }
@@ -530,6 +531,13 @@ class RustLiteEvaluatorVisitor
 
   visitVectorExpr(ctx: VectorExprContext): void {
     console.log("Visiting VectorExpr");
+    const vectorIndexAccess = ctx.vectorIndexAccess();
+    const vectorLen = ctx.vectorLen();
+    const vectorInit = ctx.vectorInit();
+    if (vectorIndexAccess)
+      return this.visitVectorIndexAccess(vectorIndexAccess);
+    if (vectorLen) return this.visitVectorLen(vectorLen);
+    if (vectorInit) return this.visitVectorInit(vectorInit);
     return;
   }
 
@@ -553,7 +561,6 @@ class RustLiteEvaluatorVisitor
         this.visitExpr(elements[i]); // Push value
         this.instrs[this.wc++] = set_vector(); // Set value at index
       }
-      this.instrs[this.wc++] = pop(); // Pop the vector reference
     }
   }
 
@@ -564,7 +571,7 @@ class RustLiteEvaluatorVisitor
 
   visitVectorIndexAccess(ctx: VectorIndexAccessContext): void {
     console.log("Visiting VectorIndexAccess");
-    const vector = ctx.IDENTIFIER;
+    const vector = ctx.IDENTIFIER();
     const index = ctx.arithExpr();
     if (!vector || !index) {
       throw new Error("Invalid vector index access");

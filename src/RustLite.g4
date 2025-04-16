@@ -133,7 +133,7 @@ returnStmt: RETURN expr? SEMICOLON;
 fnDeclareStmt: FN IDENTIFIER ('(' paramList? ')' | '()')  returnType? block;
 
 argList: expr (',' expr)* ','?;
-fnCall: IDENTIFIER '(' argList? ')';
+fnCall: IDENTIFIER ('(' argList? ')' | '()');
 
 vectorType: VECTOR_MODULE_NAME LANGLE type RANGLE;
 vectorInit: VECTOR_MODULE_NAME METHOD_ACCESSOR NEW ('()' | '(' ')')
