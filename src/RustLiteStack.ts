@@ -36,8 +36,8 @@ export class RustLiteStack {
     } else {
       throw error(`Data type not supported: ${typeof value}`);
     }
-    console.log(`Set value: ${val}`);
-    this.data.setFloat64(this.stackPointer, val, true);
+    console.log(`Set value: ${val} at SP: ${this.stackPointer}`);
+    this.data.setFloat64(this.stackPointer, val);
     this.stackPointer += word_size;
   }
 
@@ -46,7 +46,7 @@ export class RustLiteStack {
       throw new Error("Value stack is empty");
     }
     this.stackPointer -= word_size;
-    let res = this.data.getFloat64(this.stackPointer, true);
+    let res = this.data.getFloat64(this.stackPointer);
     return res;
   }
 
@@ -55,13 +55,15 @@ export class RustLiteStack {
     if (this.stackPointer < 0) {
       throw new Error("Value stack is empty");
     }
-    return this.data.getFloat64(this.stackPointer, true);
+    return this.data.getFloat64(this.stackPointer);
   }
 
   // Create a new stack frame with specified size
   public pushFrame(returnAddress?: number): void {
     console.log(
-      `Pushing frame with Stack pointer: ${this.stackPointer}, Return address: ${returnAddress}`
+      `Pushing frame ${this.getFrameCount() + 1} with Stack pointer: ${
+        this.stackPointer
+      }, Return address: ${returnAddress}`
     );
 
     const newFrame: StackFrame = {
@@ -73,93 +75,6 @@ export class RustLiteStack {
     };
 
     this.frames.push(newFrame);
-  }
-
-  // Exit a lexical scope and check for lifetime violations
-  public exitScope(): void {
-    // Check for any values with lifetimes tied to this scope
-    if (this.frames.length > 0) {
-      const currentFrame = this.frames[this.frames.length - 1];
-
-      // Check for any values that should be dropped
-      for (const [address, lifetime] of currentFrame.lifetimes.entries()) {
-        if (lifetime > this.frames.length) {
-          // Value's lifetime has ended, check if it's still borrowed
-          if (currentFrame.borrowedValues.has(address)) {
-            throw new Error(
-              `Use of value after lifetime ended at address ${address}`
-            );
-          }
-
-          // Remove the lifetime tracking for this value
-          currentFrame.lifetimes.delete(address);
-        }
-      }
-    }
-  }
-
-  // Get a local variable from the current frame
-  public getLocal(offset: number): SUPPORTED_TYPES {
-    const currentFrame = this.frames[this.frames.length - 1];
-    if (!currentFrame) {
-      throw new Error("No active frame");
-    }
-    const index = currentFrame.basePointer + offset;
-
-    // Convert numeric representation back to boolean if needed
-    // This is a simplification - in a real implementation we'd need type information
-    console.log(
-      `Getting value at offset ${offset} from frame ${this.frames.length - 1}`
-    );
-    const value = this.data.getFloat64(index * word_size, true);
-    console.log(`Value: ${value}`);
-    return value;
-  }
-
-  // Borrow a value (immutably or mutably)
-  public borrowValue(offset: number, mutable: boolean): number {
-    const currentFrame = this.frames[this.frames.length - 1];
-    if (!currentFrame) {
-      throw new Error("No active frame");
-    }
-
-    const index = currentFrame.basePointer + offset;
-    const address = index * word_size;
-
-    // Check if this value is already borrowed mutably or trying to borrow mutably when already borrowed
-    if (
-      (currentFrame.borrowedValues.has(address) &&
-        currentFrame.borrowedValues.get(address)) ||
-      (mutable && currentFrame.borrowedValues.has(address))
-    ) {
-      throw new Error(
-        `Cannot borrow value ${
-          mutable ? "mutably" : "immutably"
-        } as it is already borrowed`
-      );
-    }
-
-    // Mark as borrowed
-    currentFrame.borrowedValues.set(address, mutable);
-
-    // Return the address (which serves as a reference)
-    return address;
-  }
-
-  // Release a borrowed value
-  public releaseBorrow(address: number): void {
-    const currentFrame = this.frames[this.frames.length - 1];
-    if (!currentFrame) {
-      throw new Error("No active frame");
-    }
-
-    if (!currentFrame.borrowedValues.has(address)) {
-      throw new Error(
-        `Attempting to release a value that is not borrowed at address ${address}`
-      );
-    }
-
-    currentFrame.borrowedValues.delete(address);
   }
 
   // Get the return address from the current frame
@@ -232,16 +147,26 @@ export class RustLiteStack {
       console.log(
         `  Frame ${i}: BP=${frame.basePointer}, Size=${frame.frameSize}, RA=${frame.returnAddress}`
       );
-      console.log(`    Borrowed values: ${frame.borrowedValues.size}`);
-      console.log(`    Values with lifetimes: ${frame.lifetimes.size}`);
-
-      // Print actual values in this frame
-      for (let j = 0; j < frame.frameSize; j++) {
-        const addr = (frame.basePointer + j) * word_size;
-        const value = this.data.getFloat64(addr, true);
-        console.log(`    [${j}]: ${value}`);
-      }
     });
+    let currentFrame = 0;
+    let framePointer =
+      currentFrame < this.frames.length
+        ? this.frames[currentFrame].basePointer
+        : -1;
+
+    // Print actual values in frame stack
+    console.log("===StackData===");
+    for (let i = 0; i < this.stackPointer; i += word_size) {
+      if (i == framePointer) {
+        console.log(`=== Frame ${currentFrame + 1} ===`);
+        currentFrame++;
+        framePointer =
+          currentFrame < this.frames.length
+            ? this.frames[currentFrame].basePointer
+            : -1;
+      }
+      console.log(this.data.getFloat64(i));
+    }
     console.log("===================");
   }
 
@@ -277,8 +202,13 @@ export class RustLiteStack {
     }
 
     const index = frame.basePointer + offset;
-    console.log(`Getting value at offset ${offset} from frame ${frameIndex}`);
-    const value = this.data.getFloat64(index * word_size, true);
+    console.log(
+      `Getting value at offset ${offset} from frame ${
+        frameIndex + 1
+      } at index: ${index}`
+    );
+    this.dump();
+    const value = this.data.getFloat64(word_size * index);
     console.log(`Value: ${value}`);
     return value;
   }

@@ -66,8 +66,9 @@ class RustLiteEvaluatorVisitor
 {
   private wc: number = 0;
   private instrs: instruction[] = [];
-  private scopeList: Array<Map<string, number>> = [new Map()]; // Track variable offsets in current scope
+  private scopeList: Array<Map<string, number>> = []; // Track variable offsets in current scope
   private functionTable: Map<string, number> = new Map(); // Track function addresses
+  private functionScopeMap: Map<string, Map<string, number>> = new Map();
 
   visitProg(ctx: ProgContext): void {
     console.log(`Visiting Program, text parsed: ${ctx.getText()}`);
@@ -137,6 +138,7 @@ class RustLiteEvaluatorVisitor
       const name = identifier.getText();
 
       let paramDetails = this.findParam(name);
+      console.log(`Loading value of :${name} into top of stack`);
       this.instrs[this.wc++] = load(
         paramDetails.scopeLevel,
         paramDetails.offset
@@ -151,14 +153,18 @@ class RustLiteEvaluatorVisitor
   }
 
   findParam(name: string) {
-    console.log(`Finding param: ${name}}`);
-    console.log(`Current Scope List: ${this.scopeList}`);
+    console.log(`Finding param: ${name}`);
+    console.log(`Current Length of ScopeList: ${this.scopeList.length}`);
+    console.log(this.scopeList[this.scopeList.length - 1]);
     for (let i = this.scopeList.length - 1; i >= 0; i--) {
       const currScope = this.scopeList[i];
       let offset = currScope.get(name);
       if (offset === undefined) {
         continue;
       } else {
+        console.log(
+          `Found Param: ${name}, Scope Level: ${i}, Offset: ${offset}`
+        );
         return { scopeLevel: i, offset: offset };
       }
     }
@@ -291,24 +297,27 @@ class RustLiteEvaluatorVisitor
     if (blockContentCtx) return this.visitBlockContent(blockContentCtx);
   }
 
-  visitFnBlock(ctx: BlockContext, params: string[]): void {
+  visitFnBlock(ctx: BlockContext, fnName: string): void {
     console.log("Visiting FnBlock");
     const blockContentCtx = ctx.blockContent();
     if (blockContentCtx)
-      return this.visitFnBlockContent(blockContentCtx, params);
+      return this.visitFnBlockContent(blockContentCtx, fnName);
   }
 
   visitBlockContent(ctx: BlockContentContext): void {
     console.log("Visiting BlockContent");
     // Save the scope
-    let currentScope = new Map<string, number>();
+    const currentScope = new Map();
+    if (currentScope == undefined) {
+      throw Error("Error while creating new scope");
+    }
     this.scopeList.push(currentScope);
     const stmts = ctx.stmt();
 
     // Find the number of local variables
     const [_, names] = this.scanForLocalVars(ctx);
     const numLocals = names.length;
-    this.instrs[this.wc++] = enterScope(numLocals);
+    this.instrs[this.wc++] = enterScope();
 
     // Track if we've seen a return statement
     let hasReturn = false;
@@ -340,7 +349,7 @@ class RustLiteEvaluatorVisitor
   }
 
   private scanForLocalVars(ctx: BlockContentContext): [string[], string[]] {
-    console.log("Visiting BlockContent");
+    console.log("Scanning Local Vars");
     const stmts = ctx.stmt();
     const types: string[] = [];
     const names: string[] = [];
@@ -369,24 +378,20 @@ class RustLiteEvaluatorVisitor
     return [types, names];
   }
 
-  visitFnBlockContent(ctx: BlockContentContext, params: string[]): void {
+  visitFnBlockContent(ctx: BlockContentContext, fnName: string): void {
     console.log("Visiting FnBlockContent");
-    let currentScope = new Map<string, number>();
+    let currentScope = this.functionScopeMap.get(fnName);
+    if (currentScope == undefined) {
+      throw Error("Error getting scope from functionScopeMap");
+    }
     this.scopeList.push(currentScope);
+    console.log(`Current Scope length: ${this.scopeList.length}`);
+
     const stmts = ctx.stmt();
 
     // Find the number of local variables
     const [_, names] = this.scanForLocalVars(ctx);
     const numLocals = names.length;
-    this.instrs[this.wc++] = enterScope(numLocals + params.length);
-
-    for (let i = 0; i < params.length; i++) {
-      const name = params[i];
-      const offset = currentScope.size;
-      currentScope.set(name, offset);
-      //Might need to change to a load here
-      //this.instrs[this.wc++] = assign(this.scopeList.length - 1, offset);
-    }
 
     // Track if we've seen a return statement
     let hasReturn = false;
@@ -406,15 +411,6 @@ class RustLiteEvaluatorVisitor
         throw `Error while visiting statement ${stmt.getText()}, with error: ${error}`;
       }
     }
-
-    // Only add EXIT_SCOPE if there's no return statement
-    // If there is a return, the RESET instruction will handle popping the frame
-    if (!hasReturn) {
-      this.instrs[this.wc++] = exitScope();
-    }
-
-    // Restore outer scope when exiting
-    this.scopeList.pop();
   }
 
   visitExprStmt(ctx: ExprStmtContext): void {
@@ -530,19 +526,24 @@ class RustLiteEvaluatorVisitor
     const [paramTypes, paramNames] = this.processParamList(ctx.paramList());
     console.log(`Params: ${paramNames}`);
 
-    // // Create new scope for function parameters instead of clearing
-    // const currentScope = new Map<string, number>();
-    // this.scopeList.push(currentScope);
+    const paramScope = new Map();
+    for (let i = 0; i < paramNames.length; i++) {
+      if (paramScope.has(paramNames[i])) {
+        throw Error("Parameter name has already been declared");
+      }
+      paramScope.set(paramNames[i], i);
+    }
+
+    //Need to store the scope map seperately from the scopes because the function has not been visited yet
+    this.functionScopeMap.set(fnName, paramScope);
 
     const gotoInstr: GOTO = jump(0);
     this.instrs[this.wc++] = gotoInstr;
 
-    const fnParams = new Map<string, number>();
-
     // Visit the function body
     const blockCtx = ctx.block();
     if (!blockCtx) throw new Error("Invalid function declaration");
-    this.visitFnBlock(blockCtx, paramNames);
+    this.visitFnBlock(blockCtx, fnName);
 
     // Check if the last instruction is a RESET (return statement)
     // If not, add a default return with RESET
@@ -558,8 +559,12 @@ class RustLiteEvaluatorVisitor
 
     gotoInstr.addr = this.wc;
 
-    // Restore outer scope
-    this.scopeList.pop();
+    // Restore outer scope when exiting
+    let functionScope = this.scopeList.pop();
+    if (functionScope == undefined) {
+      throw Error("Error while trying to retrieve function scope");
+    }
+    this.functionScopeMap.set(fnName, functionScope);
   }
 
   visitFnCall(ctx: FnCallContext): void {
@@ -569,6 +574,10 @@ class RustLiteEvaluatorVisitor
     if (!fnAddr) {
       throw new Error(`Undefined function: ${fnName}`);
     }
+    const fnScope = this.functionScopeMap.get(fnName);
+    if (!fnScope) {
+      throw new Error("Undefined function scope");
+    }
     const args = ctx.argList()?.expr() || [];
     console.log(`Calling function ${fnName} with ${args.length} arguments`);
 
@@ -577,7 +586,6 @@ class RustLiteEvaluatorVisitor
       if (!args[i]) continue;
       this.visitExpr(args[i]);
     }
-
     // Load function and call it
     this.instrs[this.wc++] = loadFunction(args.length, fnAddr);
     return;
@@ -708,13 +716,11 @@ export class RustLiteEvaluator extends BasicEvaluator {
 
       // Create and run VM with instructions
       const vm = new RustLiteVirtualMachine([...instructions]);
+      console.log("=== Runnning Instructions in VM ===");
       const result = vm.run();
 
       // Send both instructions and execution result to the REPL
-      this.conductor.sendOutput(
-        `Compiled instructions: ${JSON.stringify(instructions, null, 2)}\n` +
-          `Execution result: ${result}`
-      );
+      this.conductor.sendOutput(`Execution result: ${result}`);
     } catch (error) {
       // Handle errors and send them to the REPL
       if (error instanceof Error) {

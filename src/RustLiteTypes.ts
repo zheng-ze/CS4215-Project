@@ -63,7 +63,6 @@ export interface GOTO extends instruction {
 
 export interface ENTER_SCOPE extends instruction {
   type: instruction_type.ENTER_SCOPE;
-  num: number;
 }
 
 export interface EXIT_SCOPE extends instruction {

@@ -209,7 +209,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
     [instruction_type.EXIT_SCOPE]: this.handle_exit_scope.bind(this),
 
-    [instruction_type.LD]: this.handle_load_instruction.bind(this),
+    [instruction_type.LD]: this.handle_ld_instruction.bind(this),
 
     [instruction_type.ASSIGN]: this.handle_assign_instruction.bind(this),
 
@@ -425,7 +425,6 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     const goto = inst as GOTO;
     console.log(`Jumping to address ${goto.addr}`);
     // console.log("Current PC:", this.pc);
-    console.log("This: ", this);
     this.pc = goto.addr;
   }
 
@@ -440,11 +439,12 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   }
 
   //Loads value into stack by getting values stack frame
-  private handle_load_instruction(ins: instruction) {
+  private handle_ld_instruction(ins: instruction) {
     const instr = ins as LD;
     const frame_index = instr?.pos?.first;
     const offset = instr?.pos?.second;
     const value = this.stack.getLocalFromFrame(frame_index, offset);
+    console.log(`pushed value: ${value} to top of the stack`);
     this.stack.push(value);
   }
 
@@ -458,7 +458,14 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   //Loads a function into memory by creating a new frame on the stack with return address at current pc + 1
   private handle_ldf_instruction(instr: instruction) {
     const ldf = instr as LDF;
+    const args = [];
+    for (let i = 0; i < ldf.arity; i++) {
+      args.push(this.stack.pop());
+    }
     this.stack.pushFrame(this.pc++);
+    for (let i = 0; i < ldf.arity; i++) {
+      this.stack.push(args[i]);
+    }
     this.pc = ldf.addr;
   }
 

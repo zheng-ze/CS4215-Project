@@ -59,10 +59,9 @@ export function jump(address: number): GOTO {
   };
 }
 
-export function enterScope(num: number): ENTER_SCOPE {
+export function enterScope(): ENTER_SCOPE {
   return {
     type: instruction_type.ENTER_SCOPE,
-    num: num,
   };
 }
 
