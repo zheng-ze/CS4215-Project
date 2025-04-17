@@ -1,6 +1,9 @@
 fn main() {
   let x: u8 = 5;
   let y: u8 = 10;
-  let z: u8 = x + y;
+  fn sum(a: u8, b: u8) -> u8{
+    return b - a;
+  }
+  let z = sum(x, y);
   return z;
 }

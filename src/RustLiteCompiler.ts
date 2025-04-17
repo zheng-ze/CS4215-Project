@@ -13,13 +13,11 @@ import {
   LDC,
   LDF,
   POP,
-  Pair,
   RESET,
   SET_VECTOR,
   SUPPORTED_TYPES,
   TAIL_CALL,
   UNOP,
-  instruction,
   instruction_type,
 } from "./RustLiteTypes";
 
@@ -64,54 +62,16 @@ export function jump(address: number): GOTO {
   };
 }
 
-// Add a new type to track variable scope information
-interface ScopeInfo {
-  frameLevel: number;
-  offset: number;
-}
-
-// Add scope tracking to compiler
-let currentFrameLevel = 0;
-let currentOffset = 0;
-const scopeMap = new Map<string, ScopeInfo>();
-
-export function enterScope(num: number): ENTER_SCOPE {
-  currentFrameLevel++;
-  currentOffset = 0;
+export function enterScope(): ENTER_SCOPE {
   return {
     type: instruction_type.ENTER_SCOPE,
-    num: num,
   };
 }
 
 export function exitScope(): EXIT_SCOPE {
-  currentFrameLevel--;
-  // Clear variables from the current scope
-  for (const [name, info] of scopeMap.entries()) {
-    if (info.frameLevel === currentFrameLevel + 1) {
-      scopeMap.delete(name);
-    }
-  }
   return {
     type: instruction_type.EXIT_SCOPE,
   };
-}
-
-// Add function scope tracking
-let functionScopes: Map<string, ScopeInfo>[] = [];
-
-// Add a variable to track the current function level
-let currentFunctionLevel = 2; // Start at 2 for the main function
-
-// Update enterFunctionScope to set the correct frame level
-export function enterFunctionScope(): void {
-  functionScopes.push(new Map());
-  currentFrameLevel = currentFunctionLevel;
-  currentOffset = 0;
-}
-
-export function exitFunctionScope(): void {
-  functionScopes.pop();
 }
 
 export function loadFunction(arity: number, address: number): LDF {
@@ -122,39 +82,16 @@ export function loadFunction(arity: number, address: number): LDF {
   };
 }
 
-// Update load function to correctly handle variable access
-export function load(name: string): LD {
-  console.log(scopeMap);
-  const info = scopeMap.get(name);
-  if (!info) {
-    throw new Error(`Undefined variable: ${name}`);
-  }
-
-  // Make sure we're using the correct frame level for variable access
+export function load(level: number, offset: number): LD {
   return {
     type: instruction_type.LD,
-    pos: { first: info.frameLevel, second: info.offset },
+    pos: { first: level, second: offset },
   };
 }
 
-// Update assign to use the current function level
-export function assign(name: string, isParameter: boolean = false): ASSIGN {
-  let info = scopeMap.get(name);
-  if (!info) {
-    info = {
-      frameLevel: currentFunctionLevel,
-      offset: isParameter ? currentOffset : currentOffset++,
-    };
-    console.log(
-      `Adding ${isParameter ? "parameter" : "variable"} ${name} to scope:`,
-      info
-    );
-    scopeMap.set(name, info);
-    if (isParameter) currentOffset++;
-  }
+export function assign(): ASSIGN {
   return {
     type: instruction_type.ASSIGN,
-    pos: { first: info.frameLevel, second: info.offset },
   };
 }
 

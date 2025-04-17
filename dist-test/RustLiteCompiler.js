@@ -8,8 +8,6 @@ exports.jumpIfFalse = jumpIfFalse;
 exports.jump = jump;
 exports.enterScope = enterScope;
 exports.exitScope = exitScope;
-exports.enterFunctionScope = enterFunctionScope;
-exports.exitFunctionScope = exitFunctionScope;
 exports.loadFunction = loadFunction;
 exports.load = load;
 exports.assign = assign;
@@ -56,42 +54,15 @@ function jump(address) {
         addr: address,
     };
 }
-// Add scope tracking to compiler
-let currentFrameLevel = 0;
-let currentOffset = 0;
-const scopeMap = new Map();
-function enterScope(num) {
-    currentFrameLevel++;
-    currentOffset = 0;
+function enterScope() {
     return {
         type: RustLiteTypes_1.instruction_type.ENTER_SCOPE,
-        num: num,
     };
 }
 function exitScope() {
-    currentFrameLevel--;
-    // Clear variables from the current scope
-    for (const [name, info] of scopeMap.entries()) {
-        if (info.frameLevel === currentFrameLevel + 1) {
-            scopeMap.delete(name);
-        }
-    }
     return {
         type: RustLiteTypes_1.instruction_type.EXIT_SCOPE,
     };
-}
-// Add function scope tracking
-let functionScopes = [];
-// Add a variable to track the current function level
-let currentFunctionLevel = 2; // Start at 2 for the main function
-// Update enterFunctionScope to set the correct frame level
-function enterFunctionScope() {
-    functionScopes.push(new Map());
-    currentFrameLevel = currentFunctionLevel;
-    currentOffset = 0;
-}
-function exitFunctionScope() {
-    functionScopes.pop();
 }
 function loadFunction(arity, address) {
     return {
@@ -100,35 +71,15 @@ function loadFunction(arity, address) {
         addr: address,
     };
 }
-// Update load function to correctly handle variable access
-function load(name) {
-    console.log(scopeMap);
-    const info = scopeMap.get(name);
-    if (!info) {
-        throw new Error(`Undefined variable: ${name}`);
-    }
-    // Make sure we're using the correct frame level for variable access
+function load(level, offset) {
     return {
         type: RustLiteTypes_1.instruction_type.LD,
-        pos: { first: info.frameLevel, second: info.offset },
+        pos: { first: level, second: offset },
     };
 }
-// Update assign to use the current function level
-function assign(name, isParameter = false) {
-    let info = scopeMap.get(name);
-    if (!info) {
-        info = {
-            frameLevel: currentFunctionLevel,
-            offset: isParameter ? currentOffset : currentOffset++,
-        };
-        console.log(`Adding ${isParameter ? "parameter" : "variable"} ${name} to scope:`, info);
-        scopeMap.set(name, info);
-        if (isParameter)
-            currentOffset++;
-    }
+function assign() {
     return {
         type: RustLiteTypes_1.instruction_type.ASSIGN,
-        pos: { first: info.frameLevel, second: info.offset },
     };
 }
 function call(arity) {

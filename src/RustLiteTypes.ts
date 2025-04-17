@@ -70,7 +70,6 @@ export interface GOTO extends instruction {
 
 export interface ENTER_SCOPE extends instruction {
   type: instruction_type.ENTER_SCOPE;
-  num: number;
 }
 
 export interface EXIT_SCOPE extends instruction {
@@ -84,7 +83,6 @@ export interface LD extends instruction {
 
 export interface ASSIGN extends instruction {
   type: instruction_type.ASSIGN;
-  pos: Pair<number>;
 }
 
 export interface LDF extends instruction {
