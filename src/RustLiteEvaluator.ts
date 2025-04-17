@@ -47,6 +47,7 @@ import {
   enterScope,
   exitScope,
   jump,
+  jumpIfFalse,
   load,
   loadConstant,
   loadFunction,
@@ -449,6 +450,14 @@ class RustLiteEvaluatorVisitor
 
   visitWhileStmt(ctx: WhileStmtContext): void {
     console.log("Visiting WhileStmt");
+    let start = this.wc;
+    let expr = ctx.logicExpr();
+    if (expr) this.visitLogicExpr(expr);
+    let temp = jumpIfFalse(0);
+    this.instrs[this.wc++] = temp;
+    if (ctx.block()) this.visitBlock(ctx.block());
+    this.instrs[this.wc++] = jump(start);
+    temp.addr = this.wc + 1;
     return;
   }
 

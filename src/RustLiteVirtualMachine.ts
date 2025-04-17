@@ -197,14 +197,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       this.stack.pop();
     },
 
-    [instruction_type.JOF]: (instr: instruction) => {
-      const jof = instr as JOF;
-      const condition = this.stack.pop();
-      // Jump if condition is falsy (0 or false)
-      if (condition === 0 || condition === false) {
-        this.pc = jof.addr;
-      }
-    },
+    [instruction_type.JOF]: this.handle_jof_instr.bind(this),
 
     [instruction_type.GOTO]: this.handle_goto_instr.bind(this),
 
@@ -496,5 +489,14 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
     this.pc = returnAddr;
     if (returnValue) this.os.push(returnValue);
+  }
+
+  private handle_jof_instr(instr: instruction) {
+    const jof = instr as JOF;
+    const condition = this.os.pop();
+    // Jump if condition is falsy (0 or false)
+    if (condition === 0 || condition === false) {
+      this.pc = jof.addr;
+    }
   }
 }
