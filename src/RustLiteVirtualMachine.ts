@@ -337,7 +337,10 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   //Unary Operator Handling for default operations with only one argument like ! or (-)
   private handle_unop_instruction(instr: instruction) {
     const unop = instr as UNOP;
-    const arg = this.stack.pop();
+    const arg = this.os.pop();
+    if (!arg) {
+      throw Error("UNOP Argument not found on OS");
+    }
     const result = this.apply_unop(unop.sym, arg);
     if (result) this.os.push(result);
   }
