@@ -35,7 +35,13 @@ import {
   VectorTypeContext,
   WhileStmtContext,
 } from "./parser/src/RustLiteParser";
-import { GOTO, instruction, instruction_type } from "./RustLiteTypes";
+import {
+  GOTO,
+  instruction,
+  instruction_type,
+  Scope,
+  Tuple,
+} from "./RustLiteTypes";
 import {
   allocate_vector,
   assign,
@@ -68,9 +74,10 @@ class RustLiteEvaluatorVisitor
 {
   private wc: number = 0;
   private instrs: instruction[] = [];
-  private scopeList: Array<Map<string, number>> = []; // Track variable offsets in current scope
-  private functionTable: Map<string, number> = new Map(); // Track function addresses
-  private functionScopeMap: Map<string, Map<string, number>> = new Map();
+  private scopeList: Array<Scope> = []; // Track variable offsets in current scope
+  private functionTables: Array<Map<string, Tuple<Scope, number>>> = [
+    new Map(),
+  ];
 
   visitProg(ctx: ProgContext): void {
     console.log(`Visiting Program, text parsed: ${ctx.getText()}`);
@@ -96,7 +103,7 @@ class RustLiteEvaluatorVisitor
     }
 
     // After processing all global elements, call main if it exists
-    const mainAddr = this.functionTable.get("main");
+    const mainAddr = this.getFnAddr("main");
     if (mainAddr !== undefined) {
       this.instrs[this.wc++] = loadFunction(0, mainAddr); // Load the function
       // this.instrs[this.wc++] = call(0); // Call main with 0 arguments
@@ -152,6 +159,41 @@ class RustLiteEvaluatorVisitor
     if (logicExprCtx) return this.visitLogicExpr(logicExprCtx);
     if (fnCallCtx) return this.visitFnCall(fnCallCtx);
     if (vectorExprCtx) return this.visitVectorExpr(vectorExprCtx);
+  }
+
+  findFunction(name: string): { scope: Scope; addr: number } {
+    console.log(`Finding Function :${name}`);
+    console.log(this, this.functionTables);
+    for (let i = this.functionTables.length - 1; i >= 0; i--) {
+      const currFnTable = this.functionTables[i];
+      let tple = currFnTable.get(name);
+      if (tple === undefined) {
+        continue;
+      } else {
+        console.log(
+          `Found Function: ${name}, Scope: ${tple.first}, Address: ${tple.second}`
+        );
+        return { addr: tple.second, scope: tple.first };
+      }
+    }
+    throw new Error(`Undefined Function: ${name}`);
+  }
+
+  getFnAddr(name: string): number {
+    let fnData = this.findFunction(name);
+    return fnData.addr;
+  }
+
+  getFnScope(name: string): Scope {
+    let fnData = this.findFunction(name);
+    return fnData.scope;
+  }
+
+  setFunctionScope(name: string, scope: Scope) {
+    let fnData = this.findFunction(name);
+    let oldScope = fnData.scope;
+    fnData.scope = scope;
+    console.log(`Changed function Scope From: ${oldScope} To: ${fnData.scope}`);
   }
 
   findParam(name: string) {
@@ -314,6 +356,7 @@ class RustLiteEvaluatorVisitor
       throw Error("Error while creating new scope");
     }
     this.scopeList.push(currentScope);
+    this.functionTables.push(new Map());
     const stmts = ctx.stmt();
 
     // Find the number of local variables
@@ -348,6 +391,7 @@ class RustLiteEvaluatorVisitor
     }
 
     // Restore outer scope when exiting
+    this.functionTables.pop();
     this.scopeList.pop();
   }
 
@@ -383,13 +427,15 @@ class RustLiteEvaluatorVisitor
 
   visitFnBlockContent(ctx: BlockContentContext, fnName: string): void {
     console.log("Visiting FnBlockContent");
-    let currentScope = this.functionScopeMap.get(fnName);
+    let currentScope = this.getFnScope(fnName);
     console.log(currentScope);
     if (currentScope == undefined) {
       throw Error("Error getting scope from functionScopeMap");
     }
     const prevScopeList = this.scopeList;
     this.scopeList = [currentScope];
+    this.functionTables.push(new Map());
+    console.log(this.functionTables);
     console.log(`Current Scope length: ${this.scopeList.length}`);
 
     const stmts = ctx.stmt();
@@ -418,6 +464,7 @@ class RustLiteEvaluatorVisitor
     }
     this.scopeList = prevScopeList;
     this.scopeList.push(currentScope);
+    this.functionTables.pop();
   }
 
   visitExprStmt(ctx: ExprStmtContext): void {
@@ -568,12 +615,12 @@ class RustLiteEvaluatorVisitor
     const fnName = identifier.getText();
 
     // Store function location in table
-    this.functionTable.set(fnName, this.wc + 1); // +1 to skip the jump instruction
+    let currFnTable = this.functionTables[this.functionTables.length - 1];
+    const paramScope = new Map();
 
     const [paramTypes, paramNames] = this.processParamList(ctx.paramList());
     console.log(`Params: ${paramNames}`);
 
-    const paramScope = new Map();
     for (let i = 0; i < paramNames.length; i++) {
       if (paramScope.has(paramNames[i])) {
         throw Error("Parameter name has already been declared");
@@ -581,8 +628,7 @@ class RustLiteEvaluatorVisitor
       paramScope.set(paramNames[i], i);
     }
 
-    //Need to store the scope map seperately from the scopes because the function has not been visited yet
-    this.functionScopeMap.set(fnName, paramScope);
+    currFnTable.set(fnName, { second: this.wc + 1, first: paramScope }); // +1 to skip the jump instruction
 
     const gotoInstr: GOTO = jump(0);
     this.instrs[this.wc++] = gotoInstr;
@@ -611,17 +657,17 @@ class RustLiteEvaluatorVisitor
     if (functionScope == undefined) {
       throw Error("Error while trying to retrieve function scope");
     }
-    this.functionScopeMap.set(fnName, functionScope);
+    this.setFunctionScope(fnName, functionScope);
   }
 
   visitFnCall(ctx: FnCallContext): void {
     console.log(`Visiting FnCall: ${ctx.getText()}`);
     const fnName = ctx.IDENTIFIER().getText();
-    const fnAddr = this.functionTable.get(fnName);
+    console.log(this.functionTables);
+    const { addr: fnAddr, scope: fnScope } = this.findFunction(fnName);
     if (!fnAddr) {
       throw new Error(`Undefined function: ${fnName}`);
     }
-    const fnScope = this.functionScopeMap.get(fnName);
     if (!fnScope) {
       throw new Error("Undefined function scope");
     }
