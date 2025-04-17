@@ -185,9 +185,9 @@ export class RustLiteStack {
             : -1;
       }
       console.log(
-        `Data: ${this.data.getFloat64(i)}, Type: ${this.data.getUint8(
-          i + type_offset
-        )}`
+        `Index: ${i}, Data: ${this.data.getFloat64(
+          i
+        )}, Type: ${this.data.getUint8(i + type_offset)}`
       );
     }
     console.log("===================");

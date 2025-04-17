@@ -150,7 +150,7 @@ class RustLiteStack {
                         ? this.frames[currentFrame].basePointer
                         : -1;
             }
-            console.log(`Data: ${this.data.getFloat64(i)}, Type: ${this.data.getUint8(i + RustLiteTypes_1.type_offset)}`);
+            console.log(`Index: ${i}, Data: ${this.data.getFloat64(i)}, Type: ${this.data.getUint8(i + RustLiteTypes_1.type_offset)}`);
         }
         console.log("===================");
     }

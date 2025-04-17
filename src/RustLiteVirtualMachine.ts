@@ -258,7 +258,9 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     }
     const result = this.apply_binop(binop.sym, left, right);
     console.log(
-      `Applied BINOP: ${binop.sym}, LEFT: ${left}, RIGHT: ${right}, RESULT: ${result}`
+      `Applied BINOP: ${binop.sym}, LEFT: ${JSON.stringify(
+        left
+      )}, RIGHT: ${right}, RESULT: ${result}`
     );
     if (result != undefined) this.os.push(result);
   }

@@ -1,5 +1,10 @@
 fn main() {
   let a: Vec<u8> = vec![10, 20, 30];
-  let b = a[0];
-  return b;
+  let b = 10;
+  let c = 5;
+  fn sum(x: u8, y: u8) -> u8 {
+    return x + y;
+  }
+  let z = sum(b, c);
+  return z;
 }

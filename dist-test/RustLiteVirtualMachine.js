@@ -118,7 +118,7 @@ class RustLiteVirtualMachine {
             "/": (left, right) => {
                 if (right === 0)
                     throw new Error("Division by zero");
-                return left / right;
+                return Math.floor(left / right);
             },
             "%": (left, right) => {
                 if (right === 0)
@@ -184,7 +184,7 @@ class RustLiteVirtualMachine {
             throw Error("UNOP Argument not found on OS");
         }
         const result = this.apply_unop(unop.sym, arg);
-        if (result)
+        if (result != undefined)
             this.os.push(result);
     }
     apply_unop(op, value) {
@@ -204,8 +204,8 @@ class RustLiteVirtualMachine {
             throw Error("Values not present in the OS");
         }
         const result = this.apply_binop(binop.sym, left, right);
-        console.log(`Applied BINOP: ${binop.sym}, LEFT: ${left}, RIGHT: ${right}, RESULT: ${result}`);
-        if (result)
+        console.log(`Applied BINOP: ${binop.sym}, LEFT: ${JSON.stringify(left)}, RIGHT: ${right}, RESULT: ${result}`);
+        if (result != undefined)
             this.os.push(result);
     }
     apply_binop(op, left, right) {
@@ -291,7 +291,7 @@ class RustLiteVirtualMachine {
             this.stack.popFrame();
         }
         this.pc = returnAddr;
-        if (returnValue)
+        if (returnValue != undefined)
             this.os.push(returnValue);
     }
     handle_jof_instr(instr) {
