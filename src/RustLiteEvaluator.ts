@@ -759,20 +759,26 @@ export class RustLiteEvaluator extends BasicEvaluator {
       instructions.forEach((instruction, index) => {
         console.log(`${index}:`, instruction);
       });
-
-      // Create and run VM with instructions
-      const vm = new RustLiteVirtualMachine([...instructions]);
-      console.log("=== Runnning Instructions in VM ===");
-      const result = vm.run();
-
+      try {
+        // Create and run VM with instructions
+        const vm = new RustLiteVirtualMachine([...instructions]);
+        console.log("=== Runnning Instructions in VM ===");
+        const result = vm.run();
+        this.conductor.sendOutput(`Execution result: ${result}`);
+      } catch (error) {
+        if (error instanceof Error) {
+          this.conductor.sendOutput(`Runtime Error: ${error.message}`);
+        } else {
+          this.conductor.sendOutput(`Runtime Error: ${String(error)}`);
+        }
+      }
       // Send both instructions and execution result to the REPL
-      this.conductor.sendOutput(`Execution result: ${result}`);
     } catch (error) {
       // Handle errors and send them to the REPL
       if (error instanceof Error) {
-        this.conductor.sendOutput(`Error: ${error.message}`);
+        this.conductor.sendOutput(`Compile Error: ${error.message}`);
       } else {
-        this.conductor.sendOutput(`Error: ${String(error)}`);
+        this.conductor.sendOutput(`Compile Error: ${String(error)}`);
       }
     }
   }
