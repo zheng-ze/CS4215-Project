@@ -358,7 +358,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     const binop = instr as BINOP;
     const right = this.os.pop();
     const left = this.os.pop();
-    if (!left || !right) {
+    if (left == null || right == null) {
       throw Error("Values not present in the OS");
     }
     const result = this.apply_binop(binop.sym, left, right);
