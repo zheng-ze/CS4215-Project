@@ -10,10 +10,7 @@ import { word_size, max_words } from "./RustLiteTypes";
 
 interface StackFrame {
   basePointer: number; // Points to the start of this frame in the stack
-  frameSize: number; // Size of this frame in words
   returnAddress?: number; // Optional return address for function frames
-  borrowedValues: Map<number, boolean>; // Track borrowed values (address -> is_mutable)
-  lifetimes: Map<number, number>; // Track lifetimes of values (address -> scope depth)
 }
 
 export class RustLiteStack {
@@ -68,10 +65,7 @@ export class RustLiteStack {
 
     const newFrame: StackFrame = {
       basePointer: this.stackPointer,
-      frameSize: 0,
       returnAddress: returnAddress || this.getReturnAddress(),
-      borrowedValues: new Map(),
-      lifetimes: new Map(),
     };
 
     this.frames.push(newFrame);
@@ -107,13 +101,6 @@ export class RustLiteStack {
 
     const currentFrame = this.frames.pop()!;
 
-    // Check for any remaining borrowed values (would be a bug in real Rust)
-    if (currentFrame.borrowedValues.size > 0) {
-      console.warn(
-        `Frame popped with ${currentFrame.borrowedValues.size} values still borrowed`
-      );
-    }
-
     this.stackPointer = currentFrame.basePointer; // Reset stack pointer to base of current frame
   }
 
@@ -145,7 +132,7 @@ export class RustLiteStack {
     console.log(`Frames (${this.frames.length}):`);
     this.frames.forEach((frame, i) => {
       console.log(
-        `  Frame ${i}: BP=${frame.basePointer}, Size=${frame.frameSize}, RA=${frame.returnAddress}`
+        `  Frame ${i}: BP=${frame.basePointer}, RA=${frame.returnAddress}`
       );
     });
     let currentFrame = 0;
