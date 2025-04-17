@@ -433,7 +433,12 @@ class RustLiteEvaluatorVisitor
       throw Error("Error getting scope from functionScopeMap");
     }
     const prevScopeList = this.scopeList;
-    this.scopeList = [currentScope];
+    this.scopeList = [];
+    for (let scope of prevScopeList) {
+      //We need to do this to keep track of the number of scopes
+      this.scopeList.push(new Map());
+    }
+    this.scopeList.push(currentScope);
     this.functionTables.push(new Map());
     console.log(this.functionTables);
     console.log(`Current Scope length: ${this.scopeList.length}`);
