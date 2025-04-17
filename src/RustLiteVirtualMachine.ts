@@ -331,7 +331,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   private handle_unop_instruction(instr: instruction) {
     const unop = instr as UNOP;
     const arg = this.os.pop();
-    if (arg == null) {
+    if (arg == undefined) {
       throw Error("UNOP Argument not found on OS");
     }
     const result = this.apply_unop(unop.sym, arg);
@@ -358,7 +358,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     const binop = instr as BINOP;
     const right = this.os.pop();
     const left = this.os.pop();
-    if (left == null || right == null) {
+    if (left == undefined || right == undefined) {
       throw Error("Values not present in the OS");
     }
     const result = this.apply_binop(binop.sym, left, right);
@@ -447,7 +447,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     const offset = instr?.pos?.second;
     const value = this.stack.getLocalFromFrame(frame_index, offset);
     console.log(`pushed value: ${value} to top of the stack`);
-    if (value == null) throw new Error("Value not found in stack");
+    if (value == undefined) throw new Error("Value not found in stack");
     this.os.push(value);
   }
 
@@ -455,7 +455,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   private handle_assign_instruction(inst: instruction) {
     const instr = inst as ASSIGN;
     const val = this.os.pop();
-    if (val == null) throw new Error("ASSIGN: Value not found in stack");
+    if (val == undefined) throw new Error("ASSIGN: Value not found in stack");
     this.stack.push(val);
   }
 
@@ -466,7 +466,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
     for (let i = 0; i < ldf.arity; i++) {
       let val = this.os.pop();
-      if (val == null) throw new Error("LDF: Value not found in stack");
+      if (val == undefined) throw new Error("LDF: Value not found in stack");
       this.stack.push(val);
     }
     this.pc = ldf.addr;
@@ -500,7 +500,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     const condition = this.os.pop();
     console.log(`Predicate value: ${condition}`);
     // Jump if condition is falsy (0 or false)
-    if (condition == null) throw new Error("JOF: Value not found in stack");
+    if (condition == undefined) throw new Error("JOF: Value not found in stack");
     if (condition) return;
     this.pc = jof.addr;
   }
