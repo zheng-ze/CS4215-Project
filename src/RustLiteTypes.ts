@@ -3,6 +3,7 @@ export type SUPPORTED_TYPES = number | boolean | AddressType;
 export const word_size = 9; // 8 for data, 1 for type
 export const node_size = 4;
 export const size_offset = 5;
+export const type_offset = 8;
 export const max_words = 2048;
 
 export interface AddressType {
@@ -31,6 +32,17 @@ export enum instruction_type {
   GET_VECTOR, // 17
 }
 
+export enum HeapTag {
+  VectorStart = 0,
+  VectorNode = 1,
+}
+
+export enum TypeTag {
+  Int = 0,
+  Bool = 1,
+  Address = 2,
+  Vector = 3,
+}
 export interface Pair<T> {
   first: T;
   second: T;
