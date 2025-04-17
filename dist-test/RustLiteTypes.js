@@ -1,9 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.instruction_type = exports.max_words = exports.size_offset = exports.node_size = exports.word_size = void 0;
+exports.TypeTag = exports.HeapTag = exports.instruction_type = exports.max_words = exports.type_offset = exports.size_offset = exports.node_size = exports.word_size = void 0;
 exports.word_size = 9; // 8 for data, 1 for type
 exports.node_size = 4;
 exports.size_offset = 5;
+exports.type_offset = 8;
 exports.max_words = 2048;
 var instruction_type;
 (function (instruction_type) {
@@ -26,3 +27,15 @@ var instruction_type;
     instruction_type[instruction_type["SET_VECTOR"] = 16] = "SET_VECTOR";
     instruction_type[instruction_type["GET_VECTOR"] = 17] = "GET_VECTOR";
 })(instruction_type || (exports.instruction_type = instruction_type = {}));
+var HeapTag;
+(function (HeapTag) {
+    HeapTag[HeapTag["VectorStart"] = 0] = "VectorStart";
+    HeapTag[HeapTag["VectorNode"] = 1] = "VectorNode";
+})(HeapTag || (exports.HeapTag = HeapTag = {}));
+var TypeTag;
+(function (TypeTag) {
+    TypeTag[TypeTag["Int"] = 0] = "Int";
+    TypeTag[TypeTag["Bool"] = 1] = "Bool";
+    TypeTag[TypeTag["Address"] = 2] = "Address";
+    TypeTag[TypeTag["Vector"] = 3] = "Vector";
+})(TypeTag || (exports.TypeTag = TypeTag = {}));

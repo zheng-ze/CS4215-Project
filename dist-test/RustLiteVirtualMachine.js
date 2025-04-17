@@ -2,170 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RustLiteVirtualMachine = void 0;
 const RustLiteTypes_1 = require("./RustLiteTypes");
+const RustLiteHeap_1 = require("./RustLiteHeap");
 const RustLiteStack_1 = require("./RustLiteStack");
-var HeapTag;
-(function (HeapTag) {
-    HeapTag[HeapTag["VectorStart"] = 0] = "VectorStart";
-    HeapTag[HeapTag["VectorNode"] = 1] = "VectorNode";
-})(HeapTag || (HeapTag = {}));
-var TypeTag;
-(function (TypeTag) {
-    TypeTag[TypeTag["Int"] = 0] = "Int";
-    TypeTag[TypeTag["Bool"] = 1] = "Bool";
-    TypeTag[TypeTag["Address"] = 2] = "Address";
-})(TypeTag || (TypeTag = {}));
-class Heap {
-    constructor(numWords) {
-        const buffer = new ArrayBuffer(numWords * RustLiteTypes_1.word_size);
-        this.data = new DataView(buffer);
-        // Initialize free list
-        this.free = 0;
-        // Set up the free list chain
-        for (let i = 0; i < numWords - 1; i++) {
-            this.set(i, { type: "address", value: i + 1 }, TypeTag.Address);
-        }
-        // Mark the end of the free list
-        this.set(numWords - 1, { type: "address", value: -1 }, TypeTag.Address);
-    }
-    get(address) {
-        if (address < 0 || address >= RustLiteTypes_1.max_words * RustLiteTypes_1.word_size) {
-            throw new Error(`Invalid address: ${address}`);
-        }
-        // get type
-        const type = this.get_at_offset(address, 8);
-        const storedValue = this.data.getFloat64(address * RustLiteTypes_1.word_size);
-        if (type === TypeTag.Bool) {
-            // Convert stored value to boolean
-            // 1 for true, 0 for false
-            return [storedValue === 0 ? false : true, TypeTag.Bool];
-        }
-        else if (type === TypeTag.Address) {
-            // For addresses to other vectors, return the address
-            return [{ type: "address", value: storedValue }, TypeTag.Address];
-        }
-        else if (type === TypeTag.Int) {
-            // For integers, return the value
-            return [storedValue, TypeTag.Int];
-        }
-        else {
-            throw new Error(`Unknown type tag: ${type}`);
-        }
-    }
-    set(address, value, tag) {
-        console.log(`Setting value at address ${address}:`, value, tag);
-        // Check if the address is valid
-        if (address < 0 || address >= RustLiteTypes_1.max_words * RustLiteTypes_1.word_size) {
-            throw new Error(`Invalid address: ${address}`);
-        }
-        // Check if typetag and value are compatible
-        if (tag === TypeTag.Bool && typeof value !== "boolean") {
-            throw new Error(`Expected boolean value, got ${typeof value}`);
-        }
-        if (tag === TypeTag.Int && typeof value !== "number") {
-            throw new Error(`Expected number value, got ${typeof value}`);
-        }
-        if (tag === TypeTag.Address &&
-            (typeof value !== "object" ||
-                value.type !== "address" ||
-                typeof value.value !== "number")) {
-            throw new Error(`Expected address value, got ${typeof value}`);
-        }
-        if (tag === TypeTag.Address) {
-            // For addresses to other vectors, store the address
-            let valueToStore = value;
-            this.data.setFloat64(address * RustLiteTypes_1.word_size, valueToStore.value);
-        }
-        else {
-            // For other types, store the value directly
-            // Convert boolean to number (1 for true, 0 for false)
-            let valueToStore = typeof value === "boolean" ? (value ? 1 : 0) : value;
-            this.data.setFloat64(address * RustLiteTypes_1.word_size, valueToStore);
-        }
-        this.set_at_offset(address, 8, tag);
-    }
-    // Helper method to check if a number is a valid vector address
-    isVectorAddress(addr) {
-        if (addr < 0 || addr >= this.data.byteLength) {
-            return false;
-        }
-        // Check if the tag at addr is VectorStart
-        const tag = this.data.getInt8(addr);
-        return tag === HeapTag.VectorStart;
-    }
-    allocate(tag, size) {
-        if (this.free === -1) {
-            throw new Error("heap memory exhausted");
-        }
-        const address = this.free;
-        const [free, storedTag] = this.get(this.free);
-        if (storedTag !== TypeTag.Address ||
-            typeof free !== "object" ||
-            free.type !== "address") {
-            throw new Error(`Free list corrupted at address ${address}`);
-        }
-        this.free = free.value;
-        this.data.setInt8(address * RustLiteTypes_1.word_size, tag);
-        this.data.setUint16(address * RustLiteTypes_1.word_size + RustLiteTypes_1.size_offset, size);
-        return address;
-    }
-    // Allocate a vector of size `size`
-    // The first byte is the tag
-    // The second byte is the size of the vector
-    // The other words are the elements of the vector
-    // The vector is stored as a contiguous block of memory
-    allocate_vector(numElements) {
-        if (numElements < 0) {
-            throw new Error(`Vector size cannot be negative`);
-        }
-        const address = this.allocate(HeapTag.VectorStart, 1 + numElements);
-        return address;
-    }
-    // Set a node in the vector
-    set_vector_node(address, index, value, tag) {
-        if (index < 0) {
-            throw new Error(`Index cannot be negative`);
-        }
-        if (this.getTag(address) !== HeapTag.VectorStart) {
-            throw new Error(`Address ${address} is not a vector`);
-        }
-        if (index >= this.getSize(address) - 1) {
-            throw new Error(`Index out of bounds`);
-        }
-        this.set(address + 1 + index, value, tag);
-    }
-    get_vector_node(address, index) {
-        if (index < 0)
-            throw new Error(`Index cannot be negative`);
-        if (this.getTag(address) !== HeapTag.VectorStart)
-            throw new Error(`Address ${address} is not a vector`);
-        if (index >= this.getSize(address) - 1)
-            throw new Error(`Index out of bounds`);
-        return this.get(address + 1 + index);
-    }
-    get_vector_size(address) {
-        if (this.getTag(address) !== HeapTag.VectorStart)
-            throw new Error(`Address ${address} is not a vector`);
-        return this.getSize(address) - 1;
-    }
-    get_at_offset(address, offset) {
-        return this.data.getUint8(address * RustLiteTypes_1.word_size + offset);
-    }
-    set_at_offset(address, offset, value) {
-        this.data.setUint8(address * RustLiteTypes_1.word_size + offset, value);
-    }
-    get_2_at_offset(address, offset) {
-        return this.data.getUint16(address * RustLiteTypes_1.word_size + offset);
-    }
-    set_2_at_offset(address, offset, value) {
-        this.data.setUint16(address * RustLiteTypes_1.word_size + offset, value);
-    }
-    getTag(address) {
-        return this.data.getInt8(address * RustLiteTypes_1.word_size);
-    }
-    getSize(address) {
-        return this.data.getUint16(address * RustLiteTypes_1.word_size + RustLiteTypes_1.size_offset);
-    }
-}
 class RustLiteVirtualMachine {
     constructor(instrs) {
         this.microcode = {
@@ -265,6 +103,9 @@ class RustLiteVirtualMachine {
             //   );
             // },
             [RustLiteTypes_1.instruction_type.RESET]: this.handle_reset_instr.bind(this),
+            [RustLiteTypes_1.instruction_type.ALLOC_VECTOR]: this.handle_alloc_vector.bind(this),
+            [RustLiteTypes_1.instruction_type.SET_VECTOR]: this.handle_set_vector.bind(this),
+            [RustLiteTypes_1.instruction_type.GET_VECTOR]: this.handle_get_vector.bind(this),
         };
         this.unop_microcode = {
             "-unary": (num) => -num,
@@ -296,7 +137,7 @@ class RustLiteVirtualMachine {
         this.instrs = instrs;
         this.os = [];
         this.stack = new RustLiteStack_1.RustLiteStack();
-        this.heap = new Heap(100);
+        this.heap = new RustLiteHeap_1.Heap(100);
         this.pc = 0;
     }
     run() {
@@ -321,7 +162,7 @@ class RustLiteVirtualMachine {
     reset() {
         this.stack.reset();
         this.os = [];
-        this.heap = new Heap(100);
+        this.heap = new RustLiteHeap_1.Heap(100);
         this.pc = 0;
     }
     //Load Constant, for example when we are just calling a primitive value like 1;
@@ -339,7 +180,7 @@ class RustLiteVirtualMachine {
     handle_unop_instruction(instr) {
         const unop = instr;
         const arg = this.os.pop();
-        if (arg == null) {
+        if (arg == undefined) {
             throw Error("UNOP Argument not found on OS");
         }
         const result = this.apply_unop(unop.sym, arg);
@@ -359,7 +200,7 @@ class RustLiteVirtualMachine {
         const binop = instr;
         const right = this.os.pop();
         const left = this.os.pop();
-        if (left == null || right == null) {
+        if (left == undefined || right == undefined) {
             throw Error("Values not present in the OS");
         }
         const result = this.apply_binop(binop.sym, left, right);
@@ -411,7 +252,7 @@ class RustLiteVirtualMachine {
         const offset = instr?.pos?.second;
         const value = this.stack.getLocalFromFrame(frame_index, offset);
         console.log(`pushed value: ${value} to top of the stack`);
-        if (value == null)
+        if (value == undefined)
             throw new Error("Value not found in stack");
         this.os.push(value);
     }
@@ -419,7 +260,7 @@ class RustLiteVirtualMachine {
     handle_assign_instruction(inst) {
         const instr = inst;
         const val = this.os.pop();
-        if (val == null)
+        if (val == undefined)
             throw new Error("ASSIGN: Value not found in stack");
         this.stack.push(val);
     }
@@ -429,7 +270,7 @@ class RustLiteVirtualMachine {
         this.stack.pushFrame(this.pc++);
         for (let i = 0; i < ldf.arity; i++) {
             let val = this.os.pop();
-            if (val == null)
+            if (val == undefined)
                 throw new Error("LDF: Value not found in stack");
             this.stack.push(val);
         }
@@ -459,11 +300,58 @@ class RustLiteVirtualMachine {
         const condition = this.os.pop();
         console.log(`Predicate value: ${condition}`);
         // Jump if condition is falsy (0 or false)
-        if (condition == null)
+        if (condition == undefined)
             throw new Error("JOF: Value not found in stack");
         if (condition)
             return;
         this.pc = jof.addr;
+    }
+    handle_alloc_vector(instr) {
+        const alloc = instr;
+        const size = alloc.size;
+        if (size < 0) {
+            throw new Error("ALLOC_VECTOR: Size cannot be negative");
+        }
+        const addr = this.heap.allocate_vector(size);
+        this.os.push({ type: "address", value: addr });
+        console.log(`Allocated vector of size ${size} at address ${addr}, current free list head: ${this.heap.free}`);
+    }
+    handle_set_vector(instr) {
+        console.log("OS", this.os);
+        const value = this.os.pop();
+        const index = this.os.pop();
+        if (typeof index !== "number" || index < 0) {
+            throw new Error("SET_VECTOR: Index must be a non-negative number");
+        }
+        if (value == undefined) {
+            throw new Error("SET_VECTOR: Value not found in stack");
+        }
+        const addr = this.os.slice(-1)[0];
+        if (typeof addr !== "object" || addr.type !== "address") {
+            throw new Error("SET_VECTOR: Invalid address: " + JSON.stringify(addr));
+        }
+        this.heap.set_vector_node(addr.value, index, value, RustLiteTypes_1.TypeTag.Int);
+    }
+    handle_get_vector(instr) {
+        console.log("OS", this.os);
+        const index = this.os.pop();
+        if (typeof index !== "number" || index < 0) {
+            throw new Error(`Invalid vector index: ${index}`);
+        }
+        let vectorAddr = this.os.pop();
+        if (typeof vectorAddr !== "object" || vectorAddr.type !== "address") {
+            throw new Error(`Invalid vector address: ${JSON.stringify(vectorAddr)}`);
+        }
+        vectorAddr = vectorAddr.value;
+        if (!this.heap.isVectorAddress(vectorAddr))
+            throw new Error("Invalid vector address");
+        // Get the vector node
+        let [value, tag] = this.heap.get_vector_node(vectorAddr, index);
+        if (tag === RustLiteTypes_1.TypeTag.Address) {
+            throw new Error(`Nested vectors are not supported. Address: ${value}`);
+        }
+        console.log(`GET_VECTOR: Retrieved value ${value} from address ${vectorAddr}, index ${index}`);
+        this.os.push(value);
     }
 }
 exports.RustLiteVirtualMachine = RustLiteVirtualMachine;

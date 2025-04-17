@@ -299,15 +299,17 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     visitFnBlockContent(ctx, fnName) {
         console.log("Visiting FnBlockContent");
         let currentScope = this.functionScopeMap.get(fnName);
+        console.log(currentScope);
         if (currentScope == undefined) {
             throw Error("Error getting scope from functionScopeMap");
         }
-        this.scopeList.push(currentScope);
+        const prevScopeList = this.scopeList;
+        this.scopeList = [currentScope];
         console.log(`Current Scope length: ${this.scopeList.length}`);
         const stmts = ctx.stmt();
         // Find the number of local variables
         const [_, names] = this.scanForLocalVars(ctx);
-        const numLocals = names.length;
+        // const numLocals = names.length;
         // Track if we've seen a return statement
         let hasReturn = false;
         for (let stmt of stmts) {
@@ -325,6 +327,8 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
                 throw `Error while visiting statement ${stmt.getText()}, with error: ${error}`;
             }
         }
+        this.scopeList = prevScopeList;
+        this.scopeList.push(currentScope);
     }
     visitExprStmt(ctx) {
         console.log("Visiting ExprStmt");
@@ -561,6 +565,7 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
                 this.instrs[this.wc++] = (0, RustLiteCompiler_1.set_vector)(); // Set value at index
             }
         }
+        // Do not pop reference from stack so that it can be assigned
     }
     visitVectorType(ctx) {
         console.log("Visiting Type");
