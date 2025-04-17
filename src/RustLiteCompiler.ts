@@ -86,10 +86,9 @@ export function load(level: number, offset: number): LD {
   };
 }
 
-export function assign(level: number, offset: number): ASSIGN {
+export function assign(): ASSIGN {
   return {
     type: instruction_type.ASSIGN,
-    pos: { first: level, second: offset },
   };
 }
 

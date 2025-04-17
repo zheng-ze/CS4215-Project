@@ -140,6 +140,7 @@ interface VirtualMachine<T> {
 
 export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   stack: RustLiteStack; // Stack for values, variables, and call frames
+  os: Array<SUPPORTED_TYPES>;
   heap: Heap;
   pc: number;
 
@@ -147,6 +148,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
   constructor(instrs: instruction[]) {
     this.instrs = instrs;
+    this.os = [];
     this.stack = new RustLiteStack();
     this.heap = new Heap(100);
     this.pc = 0;
@@ -174,11 +176,12 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
     // Return the value directly from stack since we store primitives there
     console.log(this.stack.dump());
-    return this.stack.pop();
+    return this.os.pop() || 0;
   }
 
   reset(): void {
     this.stack.reset();
+    this.os = [];
     this.heap = new Heap(100);
     this.pc = 0;
   }
@@ -325,7 +328,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     const ldc = instr as LDC;
     if (typeof ldc.val === "number" || typeof ldc.val === "boolean") {
       // Store primitives directly on the stack
-      this.stack.push(ldc.val);
+      this.os.push(ldc.val);
     } else {
       console.log("Non Primitive Value");
     }
@@ -336,7 +339,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     const unop = instr as UNOP;
     const arg = this.stack.pop();
     const result = this.apply_unop(unop.sym, arg);
-    this.stack.push(result);
+    if (result) this.os.push(result);
   }
 
   private unop_microcode: any = {
@@ -363,7 +366,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     console.log(
       `Applied BINOP: ${binop.sym}, LEFT: ${left}, RIGHT: ${right}, RESULT: ${result}`
     );
-    this.stack.push(result);
+    if (result) this.os.push(result);
   }
 
   private binop_microcode: any = {
@@ -445,26 +448,25 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     const offset = instr?.pos?.second;
     const value = this.stack.getLocalFromFrame(frame_index, offset);
     console.log(`pushed value: ${value} to top of the stack`);
-    this.stack.push(value);
+    if (value) this.os.push(value);
   }
 
   //Assigns a value to the current scope by pushing it onto the stack
   private handle_assign_instruction(inst: instruction) {
     const instr = inst as ASSIGN;
-    const val = this.stack.getLocalFromFrame(instr.pos.first, instr.pos.second);
-    this.stack.push(val);
+    const val = this.os.pop();
+    if (val) this.stack.push(val);
   }
 
   //Loads a function into memory by creating a new frame on the stack with return address at current pc + 1
   private handle_ldf_instruction(instr: instruction) {
     const ldf = instr as LDF;
     const args = [];
-    for (let i = 0; i < ldf.arity; i++) {
-      args.push(this.stack.pop());
-    }
     this.stack.pushFrame(this.pc++);
+
     for (let i = 0; i < ldf.arity; i++) {
-      this.stack.push(args[i]);
+      let val = this.os.pop();
+      if (val) this.stack.push(val);
     }
     this.pc = ldf.addr;
   }
@@ -476,7 +478,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       throw Error("Return Address cannot be undefined");
     }
     // Get the return value from the top of the stack
-    const returnValue = this.stack.pop();
+    const returnValue = this.os.pop();
     console.log(`Return value before frame pop: ${returnValue}`);
 
     //Need to pop frames until we completely exit the function
@@ -488,6 +490,6 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     }
 
     this.pc = returnAddr;
-    this.stack.push(returnValue);
+    if (returnValue) this.os.push(returnValue);
   }
 }

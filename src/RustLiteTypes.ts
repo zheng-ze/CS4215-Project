@@ -76,7 +76,6 @@ export interface LD extends instruction {
 
 export interface ASSIGN extends instruction {
   type: instruction_type.ASSIGN;
-  pos: Pair<number>;
 }
 
 export interface LDF extends instruction {

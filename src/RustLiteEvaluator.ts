@@ -438,6 +438,7 @@ class RustLiteEvaluatorVisitor
       // Default initialization
       this.instrs[this.wc++] = loadConstant(0);
     }
+    this.instrs[this.wc++] = assign();
     return;
   }
 
