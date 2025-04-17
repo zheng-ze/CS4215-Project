@@ -331,7 +331,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   private handle_unop_instruction(instr: instruction) {
     const unop = instr as UNOP;
     const arg = this.os.pop();
-    if (!arg) {
+    if (arg == null) {
       throw Error("UNOP Argument not found on OS");
     }
     const result = this.apply_unop(unop.sym, arg);
@@ -356,11 +356,8 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
   private handle_binop_instruction(instr: instruction) {
     const binop = instr as BINOP;
-    console.log(`Stack: ${this.os}`);
     const right = this.os.pop();
-    console.log(`Right value: ${right}`);
     const left = this.os.pop();
-    console.log(`Left value: ${left}`);
     if (left == null || right == null) {
       throw Error("Values not present in the OS");
     }
@@ -458,7 +455,8 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   private handle_assign_instruction(inst: instruction) {
     const instr = inst as ASSIGN;
     const val = this.os.pop();
-    if (val) this.stack.push(val);
+    if (val == null) throw new Error("ASSIGN: Value not found in stack");
+    this.stack.push(val);
   }
 
   //Loads a function into memory by creating a new frame on the stack with return address at current pc + 1
@@ -468,7 +466,8 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
     for (let i = 0; i < ldf.arity; i++) {
       let val = this.os.pop();
-      if (val) this.stack.push(val);
+      if (val == null) throw new Error("LDF: Value not found in stack");
+      this.stack.push(val);
     }
     this.pc = ldf.addr;
   }
@@ -497,12 +496,12 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
   private handle_jof_instr(instr: instruction) {
     const jof = instr as JOF;
+    console.log(`Stack: ${this.os}`);
     const condition = this.os.pop();
     console.log(`Predicate value: ${condition}`);
     // Jump if condition is falsy (0 or false)
-    if (condition) {
-      return;
-    }
+    if (condition == null) throw new Error("JOF: Value not found in stack");
+    if (condition) return;
     this.pc = jof.addr;
   }
 }
