@@ -201,14 +201,14 @@ export class RustLiteStack {
       throw Error("Invalid frame index");
     }
 
-    const index = frame.basePointer + offset;
+    const index = frame.basePointer + offset * word_size;
     console.log(
       `Getting value at offset ${offset} from frame ${
         frameIndex + 1
       } at index: ${index}`
     );
     this.dump();
-    const value = this.data.getFloat64(word_size * index);
+    const value = this.data.getFloat64(index);
     console.log(`Value: ${value}`);
     return value;
   }

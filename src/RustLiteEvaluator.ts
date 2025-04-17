@@ -582,7 +582,7 @@ class RustLiteEvaluatorVisitor
     console.log(`Calling function ${fnName} with ${args.length} arguments`);
 
     // Load arguments in reverse order
-    for (let i = 0; i < args.length; i++) {
+    for (let i = args.length - 1; i >= 0; i--) {
       if (!args[i]) continue;
       this.visitExpr(args[i]);
     }

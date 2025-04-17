@@ -51,10 +51,9 @@ function jump(address) {
         addr: address,
     };
 }
-function enterScope(num) {
+function enterScope() {
     return {
         type: RustLiteTypes_1.instruction_type.ENTER_SCOPE,
-        num: num,
     };
 }
 function exitScope() {
