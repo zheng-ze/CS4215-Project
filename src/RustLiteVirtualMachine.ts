@@ -360,8 +360,11 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
   private handle_binop_instruction(instr: instruction) {
     const binop = instr as BINOP;
-    const right = this.stack.pop();
-    const left = this.stack.pop();
+    const right = this.os.pop();
+    const left = this.os.pop();
+    if (!left || !right) {
+      throw Error("Values not present in the OS");
+    }
     const result = this.apply_binop(binop.sym, left, right);
     console.log(
       `Applied BINOP: ${binop.sym}, LEFT: ${left}, RIGHT: ${right}, RESULT: ${result}`
@@ -461,7 +464,6 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   //Loads a function into memory by creating a new frame on the stack with return address at current pc + 1
   private handle_ldf_instruction(instr: instruction) {
     const ldf = instr as LDF;
-    const args = [];
     this.stack.pushFrame(this.pc++);
 
     for (let i = 0; i < ldf.arity; i++) {
