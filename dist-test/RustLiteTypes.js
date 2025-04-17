@@ -1,9 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.instruction_type = exports.size_offset = exports.node_size = exports.word_size = void 0;
+exports.instruction_type = exports.max_words = exports.size_offset = exports.node_size = exports.word_size = void 0;
 exports.word_size = 8;
 exports.node_size = 4;
 exports.size_offset = 5;
+exports.max_words = 2048;
 var instruction_type;
 (function (instruction_type) {
     instruction_type[instruction_type["LDC"] = 0] = "LDC";

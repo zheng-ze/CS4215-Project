@@ -51,10 +51,9 @@ function jump(address) {
         addr: address,
     };
 }
-function enterScope(num) {
+function enterScope() {
     return {
         type: RustLiteTypes_1.instruction_type.ENTER_SCOPE,
-        num: num,
     };
 }
 function exitScope() {
@@ -62,23 +61,23 @@ function exitScope() {
         type: RustLiteTypes_1.instruction_type.EXIT_SCOPE,
     };
 }
-function loadFunction(address, arity) {
+function loadFunction(arity, address) {
     return {
         type: RustLiteTypes_1.instruction_type.LDF,
-        addr: address,
         arity: arity,
+        addr: address,
     };
 }
-function load(pos) {
+function load(level, offset) {
     return {
         type: RustLiteTypes_1.instruction_type.LD,
-        pos: pos,
+        pos: { first: level, second: offset },
     };
 }
-function assign(pos) {
+function assign(level, offset) {
     return {
         type: RustLiteTypes_1.instruction_type.ASSIGN,
-        pos: pos,
+        pos: { first: level, second: offset },
     };
 }
 function call(arity) {

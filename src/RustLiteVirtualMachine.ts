@@ -3,6 +3,7 @@ import {
   BINOP,
   CALL,
   ENTER_SCOPE,
+  EXIT_SCOPE,
   GOTO,
   JOF,
   LD,
@@ -15,10 +16,14 @@ import {
   UNOP,
   instruction,
   instruction_type,
+  max_words,
   node_size,
   size_offset,
   word_size,
 } from "./RustLiteTypes";
+
+import { RustLiteStack } from "./RustLiteStack";
+import { off } from "process";
 
 interface VirtualMachineMicrocode {
   [key: string]: (instr: instruction) => void;
@@ -29,17 +34,8 @@ enum HeapTag {
   Number = 1,
   Blockframe = 2,
   Callframe = 3,
-  Closure = 4,
   Frame = 5,
-  Environment = 6,
   Struct = 7,
-}
-
-function push<T>(array: T[], ...items: T[]): T[] {
-  for (const item of items) {
-    array.push(item);
-  }
-  return array;
 }
 
 function peek(array: SUPPORTED_TYPES[], index: number): SUPPORTED_TYPES {
@@ -50,13 +46,23 @@ function peek(array: SUPPORTED_TYPES[], index: number): SUPPORTED_TYPES {
 }
 
 class Heap {
-  data: DataView<ArrayBuffer>;
+  data: DataView;
   free: number;
 
   constructor(numWords: number) {
     const buffer = new ArrayBuffer(numWords * word_size);
     this.data = new DataView(buffer);
+
+    // Initialize free list
     this.free = 0;
+
+    // Set up the free list chain
+    for (let i = 0; i < numWords - 1; i++) {
+      this.set(i * word_size, (i + 1) * word_size);
+    }
+
+    // Mark the end of the free list
+    this.set((numWords - 1) * word_size, -1);
   }
 
   get(index: number): number {
@@ -126,34 +132,36 @@ class Heap {
 
 interface VirtualMachine<T> {
   microcode: VirtualMachineMicrocode;
-
-  stack: T[];
+  stack: RustLiteStack;
   heap: Heap;
   pc: number;
-  e: number;
-  rts: number[];
-
   instrs: instruction[];
 }
 
 export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
-  stack: SUPPORTED_TYPES[];
+  stack: RustLiteStack; // Stack for values, variables, and call frames
   heap: Heap;
   pc: number;
-  e: number;
-  rts: number[];
 
   instrs: instruction[];
 
   constructor(instrs: instruction[]) {
-    this.reset();
     this.instrs = instrs;
+    this.stack = new RustLiteStack();
+    this.heap = new Heap(100);
+    this.pc = 0;
   }
 
   run(): SUPPORTED_TYPES {
     this.reset();
 
     while (this.instrs[this.pc].type !== instruction_type.DONE) {
+      console.log("PC:", this.pc);
+      console.log(
+        "Current instruction type:",
+        instruction_type[this.instrs[this.pc].type]
+      );
+      console.log("Instruction:", this.instrs[this.pc]);
       const instr = this.instrs[this.pc++];
 
       const microcode = this.microcode[instr.type];
@@ -164,320 +172,212 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       }
     }
 
-    return this.address_to_JS_value(peek(this.stack, 0) as number);
+    // Return the value directly from stack since we store primitives there
+    console.log(this.stack.dump());
+    return this.stack.pop();
   }
 
   reset(): void {
-    this.stack = [];
+    this.stack.reset();
     this.heap = new Heap(100);
     this.pc = 0;
-    this.e = 0;
-    this.rts = [];
   }
 
   microcode: VirtualMachineMicrocode = {
-    [instruction_type.LDC]: (instr: instruction) => {
-      const ldc = instr as LDC;
-      const addr = this.JS_value_to_address(ldc.val);
-      push(this.stack, addr);
-    },
-    [instruction_type.UNOP]: (instr: instruction) => {
-      const unop = instr as UNOP;
-      const arg = this.stack.pop() as number;
-      const result = this.apply_unop(unop.sym, arg);
-      push(this.stack, result);
-    },
-    [instruction_type.BINOP]: (instr: instruction) => {
-      const binop = instr as BINOP;
-      const right = this.stack.pop() as number;
-      const left = this.stack.pop() as number;
-      const result = this.apply_binop(binop.sym, left, right);
-      push(this.stack, result);
-    },
+    [instruction_type.LDC]: this.handle_ldc_instruction.bind(this),
+
+    [instruction_type.UNOP]: this.handle_unop_instruction.bind(this),
+
+    [instruction_type.BINOP]: this.handle_binop_instruction.bind(this),
+
     [instruction_type.POP]: (instr: instruction) => {
       this.stack.pop();
     },
+
     [instruction_type.JOF]: (instr: instruction) => {
       const jof = instr as JOF;
-      const condition = this.stack.pop() as number;
-      if (this.address_to_JS_value(condition) === false) {
+      const condition = this.stack.pop();
+      // Jump if condition is falsy (0 or false)
+      if (condition === 0 || condition === false) {
         this.pc = jof.addr;
       }
     },
-    [instruction_type.GOTO]: (instr: instruction) => {
-      const goto = instr as GOTO;
-      this.pc = goto.addr;
-    },
-    [instruction_type.ENTER_SCOPE]: (instr: instruction) => {
-      const enter = instr as ENTER_SCOPE;
-      const blockframe_addr = this.allocate_Blockframe(this.e);
-      this.rts.push(blockframe_addr);
-      const frame_addr = this.allocate_Environment(enter.num);
-      this.e = this.environment_extend(frame_addr, this.e);
-      for (let i = 0; i < enter.num; i++) {
-        this.heap.set_child(frame_addr, i, 0); // initialize to 0
-      }
-    },
-    [instruction_type.EXIT_SCOPE]: (instr: instruction) => {
-      const frame_addr = this.get_blockframe_env(this.rts.pop());
-      this.e = frame_addr;
-    },
-    [instruction_type.LD]: (instr: instruction) => {
-      const ld = instr as LD;
-      const valueAddr = this.get_Environment_value(this.e, ld.pos);
-      push(this.stack, valueAddr);
-    },
-    [instruction_type.ASSIGN]: (instr: instruction) => {
-      const assign = instr as ASSIGN;
-      const valueAddr = peek(this.stack, 0) as number;
-      this.set_Environment_value(this.e, assign.pos, valueAddr);
-    },
-    [instruction_type.LDF]: (instr: instruction) => {
-      const ldf = instr as LDF;
-      const addr = this.allocate_Closure(ldf.arity, ldf.addr, this.e);
-      push(this.stack, addr);
-    },
-    [instruction_type.CALL]: (instr: instruction) => {
-      const call = instr as CALL;
-      const arity = call.arity;
-      const fun = peek(this.stack, arity) as number;
 
-      const new_e = this.allocate_Environment(arity);
-      for (let i = arity - 1; i >= 0; i--) {
-        const arg = this.stack.pop() as number;
-        this.heap.set_child(this.e, i, arg);
-      }
-      this.stack.pop(); // pop the function
+    [instruction_type.GOTO]: this.handle_goto_instr.bind(this),
 
-      const callframe_addr = this.allocate_Callframe(this.e, this.pc);
-      this.rts.push(callframe_addr);
+    [instruction_type.ENTER_SCOPE]: this.handle_enter_scope.bind(this),
 
-      const fun_addr = this.get_closure_env(fun);
-      this.e = this.environment_extend(new_e, fun_addr);
+    [instruction_type.EXIT_SCOPE]: this.handle_exit_scope.bind(this),
 
-      const new_pc = this.get_closure_pc(fun);
-      this.pc = new_pc;
-    },
-    [instruction_type.TAIL_CALL]: (instr: instruction) => {
-      const tail_call = instr as TAIL_CALL;
-      const arity = tail_call.arity;
-      const fun = peek(this.stack, arity) as number;
+    [instruction_type.LD]: this.handle_ld_instruction.bind(this),
 
-      for (let i = arity - 1; i >= 0; i--) {
-        const arg = this.stack.pop() as number;
-        this.heap.set_child(this.e, i, arg);
-      }
-      this.stack.pop(); // pop the function
+    [instruction_type.ASSIGN]: this.handle_assign_instruction.bind(this),
 
-      //don't push on RTS here
+    [instruction_type.LDF]: this.handle_ldf_instruction.bind(this),
 
-      const fun_addr = this.get_closure_env(fun);
-      this.e = fun_addr;
+    // [instruction_type.CALL]: (instr: instruction) => {
+    //   const call = instr as CALL;
+    //   const arity = call.arity;
+    //   // Get function info from stack (order is now reversed from LDF)
+    //   const functionArity = this.stack.pop();
+    //   const functionPC = this.stack.pop();
 
-      const new_pc = this.get_closure_pc(fun);
-      this.pc = new_pc;
-    },
-    [instruction_type.RESET]: (instr: instruction) => {
-      const reset = instr as RESET;
-      this.pc--;
-      const top_frame = this.rts.pop();
-      if (this.is_Callframe(top_frame)) {
-        this.e = this.get_callframe_env(top_frame);
-        this.pc = this.get_callframe_pc(top_frame);
-      }
-    },
+    //   if (functionArity !== arity) {
+    //     throw new Error(
+    //       `Function expected ${functionArity} arguments but got ${arity}`
+    //     );
+    //   }
+
+    //   // Set return address to current PC
+    //   const returnAddr = this.pc;
+    //   console.log(
+    //     `Setting return address to ${returnAddr} for function call to PC=${functionPC}`
+    //   );
+
+    //   // Store arguments temporarily
+    //   const args: SUPPORTED_TYPES[] = [];
+    //   console.log("In Call fn");
+    //   for (let i = 0; i < arity; i++) {
+    //     args[i] = this.stack.pop();
+    //   }
+
+    //   console.log(args);
+
+    //   // Create a new frame for the function with enough space for all parameters
+    //   const frameSize = arity;
+    //   this.stack.pushFrame(returnAddr);
+
+    //   // Double-check that the return address is set correctly
+    //   this.stack.setReturnAddress(returnAddr);
+
+    //   // Store arguments in the new frame in the correct order
+    //   for (let i = 0; i < arity; i++) {
+    //     // The arguments are popped in reverse order from the stack
+    //     // For a call like sum(x, y), the stack will have [y, x]
+    //     // So we need to store them in the correct order in the frame
+    //     this.stack.setLocalInFrame(
+    //       this.stack.getFrameCount() - 1,
+    //       i,
+    //       args[arity - 1 - i]
+    //     );
+    //     console.log(`Setting argument ${i} to value ${args[arity - 1 - i]}`);
+    //   }
+
+    //   // Update program counter
+    //   this.pc = Number(functionPC);
+
+    //   console.log(
+    //     `CALL: Jumping to function at PC=${functionPC}, return address=${returnAddr}, frame size=${frameSize}`
+    //   );
+    // },
+
+    // [instruction_type.TAIL_CALL]: (instr: instruction) => {
+    //   const tail_call = instr as TAIL_CALL;
+    //   const arity = tail_call.arity;
+
+    //   // Get function info from stack
+    //   const functionArity = this.stack.pop();
+    //   const functionPC = this.stack.pop();
+
+    //   if (functionArity !== arity) {
+    //     throw new Error(
+    //       `Function expected ${functionArity} arguments but got ${arity}`
+    //     );
+    //   }
+
+    //   // For tail calls, we need to preserve the return address
+    //   const returnAddr = this.stack.getReturnAddress();
+    //   if (returnAddr === undefined) {
+    //     throw new Error("Cannot perform tail call without a return address");
+    //   }
+
+    //   // Store arguments temporarily
+    //   const args: SUPPORTED_TYPES[] = [];
+    //   for (let i = 0; i < arity; i++) {
+    //     args[i] = this.stack.pop();
+    //   }
+
+    //   // Pop the current frame but remember its return address
+    //   this.stack.popFrame();
+
+    //   // Create a new frame with the same return address
+    //   const frameSize = Math.max(arity, 1);
+    //   this.stack.pushFrame(returnAddr);
+
+    //   // Store arguments in the new frame
+    //   for (let i = 0; i < arity; i++) {
+    //     this.stack.setLocal(i, args[arity - 1 - i]);
+    //   }
+
+    //   // Update PC
+    //   this.pc = Number(functionPC);
+
+    //   console.log(
+    //     `TAIL_CALL: Jumping to function at PC=${functionPC}, preserving return address=${returnAddr}`
+    //   );
+    // },
+
+    [instruction_type.RESET]: this.handle_reset_instr.bind(this),
   };
 
-  // bool
-  // [1 byte tag, 4 bytes unused,
-  //  2 bytes #children, 1 byte unused]
-  // followed by the number, one word
-  // note: #children is 0
-  private is_Bool(address: number): boolean {
-    return this.heap.getTag(address) === HeapTag.Bool;
-  }
-
-  private allocate_Bool(value: boolean): number {
-    const address = this.heap.allocate(HeapTag.Bool, 2);
-    this.heap.set(address + 1, value ? 1 : 0);
-    return address;
-  }
-
-  // number
-  // [1 byte tag, 4 bytes unused,
-  //  2 bytes #children, 1 byte unused]
-  // followed by the number, one word
-  // note: #children is 0
-  private is_Number(address: number): boolean {
-    return this.heap.getTag(address) === HeapTag.Number;
-  }
-
-  private allocateNumber(value: number): number {
-    const address = this.heap.allocate(HeapTag.Number, 2);
-    this.heap.set(address + 1, value);
-    return address;
-  }
-
-  // closure
-  // [1 byte tag, 1 byte arity, 2 bytes pc, 1 byte unused,
-  //  2 bytes #children, 1 byte unused]
-  // followed by the address of env
-  // note: currently bytes at offset 4 and 7 are not used;
-  //   they could be used to increase pc and #children range
-  private is_Closure(address: number): boolean {
-    return this.heap.getTag(address) === HeapTag.Closure;
-  }
-
-  private allocate_Closure(arity: number, pc: number, env: number): number {
-    const address = this.heap.allocate(HeapTag.Closure, 2);
-    this.heap.set_at_offset(address, 1, arity);
-    this.heap.set_2_at_offset(address, 2, pc);
-    this.heap.set(address + 1, env);
-    return address;
-  }
-
-  private get_closure_arity(address: number): number {
-    return this.heap.get_at_offset(address, 1);
-  }
-
-  private get_closure_pc(address: number): number {
-    return this.heap.get_2_at_offset(address, 2);
-  }
-
-  private get_closure_env(address: number): number {
-    return this.heap.get_child(address, 0);
-  }
-
-  // block frame
-  // [1 byte tag, 4 bytes unused,
-  //  2 bytes #children, 1 byte unused]
-  is_Blockframe(address: number): boolean {
-    return this.heap.getTag(address) === HeapTag.Blockframe;
-  }
-
-  private allocate_Blockframe(env: number): number {
-    const address = this.heap.allocate(HeapTag.Blockframe, 2);
-    this.heap.set(address + 1, env);
-    return address;
-  }
-
-  private get_blockframe_env(address: number): number {
-    return this.heap.get_child(address, 0);
-  }
-
-  // call frame
-  // [1 byte tag, 1 byte unused, 2 bytes pc,
-  //  1 byte unused, 2 bytes #children, 1 byte unused]
-  // followed by the address of env
-  private is_Callframe(address: number): boolean {
-    return this.heap.getTag(address) === HeapTag.Callframe;
-  }
-
-  private allocate_Callframe(env: number, pc: number): number {
-    const address = this.heap.allocate(HeapTag.Callframe, 2);
-    this.heap.set_2_at_offset(address, 2, pc);
-    this.heap.set(address + 1, env);
-    return address;
-  }
-
-  private get_callframe_env(address: number): number {
-    return this.heap.get_child(address, 0);
-  }
-
-  private get_callframe_pc(address: number): number {
-    return this.heap.get_2_at_offset(address, 2);
-  }
-
-  // environment frame
-  // [1 byte tag, 4 bytes unused,
-  //  2 bytes #children, 1 byte unused]
-  // followed by the addresses of its values
-
-  private is_Environment(address: number): boolean {
-    return this.heap.getTag(address) === HeapTag.Environment;
-  }
-
-  private allocate_Environment(numFrames: number): number {
-    const address = this.heap.allocate(HeapTag.Environment, numFrames + 1);
-    return address;
-  }
-
-  private get_Environment_value(address: number, index: Pair<number>): number {
-    const frameIndex = index.first;
-    const valueIndex = index.second;
-    const frameAddress = this.heap.get_child(address, frameIndex);
-    const valueAddress = this.heap.get_child(frameAddress, valueIndex);
-    return valueAddress;
-  }
-
-  private set_Environment_value(
-    address: number,
-    index: Pair<number>,
-    value: number
-  ): void {
-    const frameIndex = index.first;
-    const valueIndex = index.second;
-    const frameAddress = this.heap.get_child(address, frameIndex);
-    this.heap.set_child(frameAddress, valueIndex, value);
-  }
-
-  private environment_extend(frameAddress: number, envAddress: number): number {
-    const old_size = this.heap.getSize(envAddress);
-    const new_env_address = this.heap.allocate(
-      HeapTag.Environment,
-      old_size + 1
-    );
-    let i = 0;
-    for (i; i < old_size - 1; i++) {
-      this.heap.set_child(
-        new_env_address,
-        i,
-        this.heap.get_child(envAddress, i)
-      );
+  //Load Constant, for example when we are just calling a primitive value like 1;
+  private handle_ldc_instruction(instr: instruction) {
+    const ldc = instr as LDC;
+    if (typeof ldc.val === "number" || typeof ldc.val === "boolean") {
+      // Store primitives directly on the stack
+      this.stack.push(ldc.val);
+    } else {
+      console.log("Non Primitive Value");
     }
-    this.heap.set_child(new_env_address, i, frameAddress);
-    return new_env_address;
   }
 
-  private address_to_JS_value(address: number): SUPPORTED_TYPES {
-    if (this.is_Bool(address)) {
-      return this.heap.get(address + 1) === 1;
-    }
-
-    if (this.is_Number(address)) {
-      return this.heap.get(address + 1);
-    }
-
-    throw new Error(`Unsupported address type: ${this.heap.getTag(address)}`);
+  //Unary Operator Handling for default operations with only one argument like ! or (-)
+  private handle_unop_instruction(instr: instruction) {
+    const unop = instr as UNOP;
+    const arg = this.stack.pop();
+    const result = this.apply_unop(unop.sym, arg);
+    this.stack.push(result);
   }
 
-  private JS_value_to_address(val: SUPPORTED_TYPES): number {
-    if (typeof val === "number") {
-      return this.allocateNumber(val);
-    }
-
-    if (typeof val === "boolean") {
-      return this.allocate_Bool(val);
-    }
-
-    throw new Error(`Unsupported type: ${typeof val}`);
-  }
-
-  private unop_microcode = {
+  private unop_microcode: any = {
     "-unary": (num: number) => -num,
     "!": (bool: boolean) => !bool,
   };
 
-  private apply_unop(op: string, address: number): SUPPORTED_TYPES {
-    return this.unop_microcode[op](this.address_to_JS_value(address));
+  private apply_unop(op: string, value: SUPPORTED_TYPES): SUPPORTED_TYPES {
+    // Convert numeric 0/1 to boolean for boolean operations
+    if (op === "!") {
+      return this.unop_microcode[op](value === 0 ? false : true);
+    }
+    return this.unop_microcode[op](value);
   }
 
-  private binop_microcode = {
+  //Binary Operator Handling for default operations with two arguments
+  //Pre Condition: left and right arguments should have already been pushed onto the stack in the order [left, right]
+
+  private handle_binop_instruction(instr: instruction) {
+    const binop = instr as BINOP;
+    const right = this.stack.pop();
+    const left = this.stack.pop();
+    const result = this.apply_binop(binop.sym, left, right);
+    console.log(
+      `Applied BINOP: ${binop.sym}, LEFT: ${left}, RIGHT: ${right}, RESULT: ${result}`
+    );
+    this.stack.push(result);
+  }
+
+  private binop_microcode: any = {
     "+": (left: number, right: number) => left + right,
     "-": (left: number, right: number) => left - right,
     "*": (left: number, right: number) => left * right,
-    "/": (left: number, right: number) => left / right,
-    "%": (left: number, right: number) => left % right,
+    "/": (left: number, right: number) => {
+      if (right === 0) throw new Error("Division by zero");
+      return left / right;
+    },
+    "%": (left: number, right: number) => {
+      if (right === 0) throw new Error("Modulo by zero");
+      return left % right;
+    },
     "==": (left: SUPPORTED_TYPES, right: SUPPORTED_TYPES) => left === right,
     "!=": (left: SUPPORTED_TYPES, right: SUPPORTED_TYPES) => left !== right,
     "<": (left: number, right: number) => left < right,
@@ -490,12 +390,104 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
   private apply_binop(
     op: string,
-    leftAddr: number,
-    rightAddr: number
+    left: SUPPORTED_TYPES,
+    right: SUPPORTED_TYPES
   ): SUPPORTED_TYPES {
-    return this.binop_microcode[op](
-      this.address_to_JS_value(leftAddr),
-      this.address_to_JS_value(rightAddr)
-    );
+    const operation = this.binop_microcode[op];
+    if (!operation) {
+      throw new Error(`Unknown binary operator: ${op}`);
+    }
+
+    // Convert numeric 0/1 to boolean for boolean operations
+    if (op === "&&" || op === "||") {
+      return operation(left === 0 ? false : true, right === 0 ? false : true)
+        ? 1
+        : 0;
+    }
+
+    // For comparison operators, return 1 for true and 0 for false
+    if (
+      op === "==" ||
+      op === "!=" ||
+      op === "<" ||
+      op === "<=" ||
+      op === ">" ||
+      op === ">="
+    ) {
+      return operation(left, right) ? 1 : 0;
+    }
+
+    return operation(left, right);
+  }
+
+  //GOTO, updates the pointer of the current instruction to the index/address specified in the GOTO instruction
+  private handle_goto_instr(inst: instruction) {
+    const goto = inst as GOTO;
+    console.log(`Jumping to address ${goto.addr}`);
+    // console.log("Current PC:", this.pc);
+    this.pc = goto.addr;
+  }
+
+  //Enters a new scope and creates a new frame on the stack
+  private handle_enter_scope(instr: instruction) {
+    this.stack.pushFrame();
+  }
+
+  //Exits a scope by popping frame from stack and resetting stack pointer to previous base of frame
+  private handle_exit_scope(instr: instruction) {
+    this.stack.popFrame();
+  }
+
+  //Loads value into stack by getting values stack frame
+  private handle_ld_instruction(ins: instruction) {
+    const instr = ins as LD;
+    const frame_index = instr?.pos?.first;
+    const offset = instr?.pos?.second;
+    const value = this.stack.getLocalFromFrame(frame_index, offset);
+    console.log(`pushed value: ${value} to top of the stack`);
+    this.stack.push(value);
+  }
+
+  //Assigns a value to the current scope by pushing it onto the stack
+  private handle_assign_instruction(inst: instruction) {
+    const instr = inst as ASSIGN;
+    const val = this.stack.getLocalFromFrame(instr.pos.first, instr.pos.second);
+    this.stack.push(val);
+  }
+
+  //Loads a function into memory by creating a new frame on the stack with return address at current pc + 1
+  private handle_ldf_instruction(instr: instruction) {
+    const ldf = instr as LDF;
+    const args = [];
+    for (let i = 0; i < ldf.arity; i++) {
+      args.push(this.stack.pop());
+    }
+    this.stack.pushFrame(this.pc++);
+    for (let i = 0; i < ldf.arity; i++) {
+      this.stack.push(args[i]);
+    }
+    this.pc = ldf.addr;
+  }
+
+  private handle_reset_instr(instr: instruction) {
+    // Get the return address from the current frame
+    const returnAddr = this.stack.getReturnAddress();
+    if (returnAddr == undefined) {
+      throw Error("Return Address cannot be undefined");
+    }
+    // Get the return value from the top of the stack
+    const returnValue = this.stack.pop();
+    console.log(`Return value before frame pop: ${returnValue}`);
+
+    //Need to pop frames until we completely exit the function
+    while (
+      this.stack.getFrameCount() &&
+      this.stack.getReturnAddress() == returnAddr
+    ) {
+      this.stack.popFrame();
+    }
+
+    this.pc = returnAddr;
+    this.stack.push(returnValue);
   }
 }

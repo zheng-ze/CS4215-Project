@@ -3,20 +3,18 @@ import {
   BINOP,
   CALL,
   DONE,
+  GOTO,
   ENTER_SCOPE,
   EXIT_SCOPE,
-  GOTO,
   JOF,
   LD,
   LDC,
   LDF,
   POP,
-  Pair,
   RESET,
   SUPPORTED_TYPES,
   TAIL_CALL,
   UNOP,
-  instruction,
   instruction_type,
 } from "./RustLiteTypes";
 
@@ -61,10 +59,9 @@ export function jump(address: number): GOTO {
   };
 }
 
-export function enterScope(num: number): ENTER_SCOPE {
+export function enterScope(): ENTER_SCOPE {
   return {
     type: instruction_type.ENTER_SCOPE,
-    num: num,
   };
 }
 
@@ -74,25 +71,25 @@ export function exitScope(): EXIT_SCOPE {
   };
 }
 
-export function loadFunction(address: number, arity: number): LDF {
+export function loadFunction(arity: number, address: number): LDF {
   return {
     type: instruction_type.LDF,
-    addr: address,
     arity: arity,
+    addr: address,
   };
 }
 
-export function load(pos: Pair<number>): LD {
+export function load(level: number, offset: number): LD {
   return {
     type: instruction_type.LD,
-    pos: pos,
+    pos: { first: level, second: offset },
   };
 }
 
-export function assign(pos: Pair<number>): ASSIGN {
+export function assign(level: number, offset: number): ASSIGN {
   return {
     type: instruction_type.ASSIGN,
-    pos: pos,
+    pos: { first: level, second: offset },
   };
 }
 
