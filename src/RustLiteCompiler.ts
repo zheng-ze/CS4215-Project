@@ -1,17 +1,20 @@
 import {
+  ALLOC_VECTOR,
   ASSIGN,
   BINOP,
   CALL,
   DONE,
-  GOTO,
   ENTER_SCOPE,
   EXIT_SCOPE,
+  GET_VECTOR,
+  GOTO,
   JOF,
   LD,
   LDC,
   LDF,
   POP,
   RESET,
+  SET_VECTOR,
   SUPPORTED_TYPES,
   TAIL_CALL,
   UNOP,
@@ -115,5 +118,24 @@ export function reset(): RESET {
 export function done(): DONE {
   return {
     type: instruction_type.DONE,
+  };
+}
+
+export function allocate_vector(size: number): ALLOC_VECTOR {
+  return {
+    type: instruction_type.ALLOC_VECTOR,
+    size: size,
+  };
+}
+
+export function set_vector(): SET_VECTOR {
+  return {
+    type: instruction_type.SET_VECTOR,
+  };
+}
+
+export function get_vector(): GET_VECTOR {
+  return {
+    type: instruction_type.GET_VECTOR,
   };
 }

@@ -2,131 +2,91 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RustLiteStack = void 0;
 const RustLiteTypes_1 = require("./RustLiteTypes");
+const RustLiteTypes_2 = require("./RustLiteTypes");
+const console_1 = require("console");
 class RustLiteStack {
     constructor() {
         this.stackPointer = 0; // Points to the next free slot on the stack
         this.frames = []; // Metadata about frames
-        this.valueStack = []; // Separate stack for temporary values
         // Initialize the stack memory
-        const buffer = new ArrayBuffer(RustLiteTypes_1.max_words * RustLiteTypes_1.word_size);
+        const buffer = new ArrayBuffer(RustLiteTypes_2.max_words * RustLiteTypes_2.word_size);
         this.data = new DataView(buffer);
     }
-    // Push a value onto the value stack (for temporary values during expression evaluation)
     push(value) {
-        this.valueStack.push(value);
-    }
-    // Pop a value from the value stack
-    pop() {
-        if (this.valueStack.length === 0) {
-            throw new Error("Value stack underflow");
+        let val;
+        let type;
+        if (typeof value === "boolean") {
+            val = value ? 1 : 0;
+            type = RustLiteTypes_1.TypeTag.Bool;
         }
-        return this.valueStack.pop();
+        else if (typeof value === "number") {
+            val = value;
+            type = RustLiteTypes_1.TypeTag.Int;
+        }
+        else if (typeof value === "object" && value.type === "address") {
+            val = value.value;
+            type = RustLiteTypes_1.TypeTag.Address;
+        }
+        else {
+            throw (0, console_1.error)(`Data type not supported: ${typeof value}`);
+        }
+        console.log(`Set value: ${val} at SP: ${this.stackPointer}`);
+        this.data.setFloat64(this.stackPointer, val); // store the value
+        this.data.setUint8(this.stackPointer + RustLiteTypes_1.type_offset, type); // store the type
+        this.stackPointer += RustLiteTypes_2.word_size;
+    }
+    pop() {
+        if (this.stackPointer === 0) {
+            throw new Error("Value stack is empty");
+        }
+        this.stackPointer -= RustLiteTypes_2.word_size;
+        let res = this.data.getFloat64(this.stackPointer);
+        let type = this.data.getUint8(this.stackPointer + RustLiteTypes_1.type_offset);
+        let output;
+        if (type === RustLiteTypes_1.TypeTag.Bool) {
+            output = res === 0 ? false : true;
+        }
+        else if (type === RustLiteTypes_1.TypeTag.Int) {
+            output = res;
+        }
+        else if (type === RustLiteTypes_1.TypeTag.Address) {
+            output = { type: "address", value: res };
+        }
+        else {
+            throw new Error(`Unknown type tag: ${type}`);
+        }
+        return output;
     }
     // Peek at the top value without popping
     peek() {
-        if (this.valueStack.length === 0) {
+        if (this.stackPointer < 0) {
             throw new Error("Value stack is empty");
         }
-        return this.valueStack[this.valueStack.length - 1];
+        const data = this.data.getFloat64(this.stackPointer);
+        const type = this.data.getUint8(this.stackPointer + RustLiteTypes_1.type_offset);
+        let output;
+        if (type === RustLiteTypes_1.TypeTag.Bool) {
+            output = data === 0 ? false : true;
+        }
+        else if (type === RustLiteTypes_1.TypeTag.Int) {
+            output = data;
+        }
+        else if (type === RustLiteTypes_1.TypeTag.Address) {
+            output = { type: "address", value: data };
+        }
+        else {
+            throw new Error(`Unknown type tag: ${type}`);
+        }
+        return output;
     }
     // Create a new stack frame with specified size
     pushFrame(returnAddress) {
-        console.log(`Pushing frame with Stack pointer: ${this.stackPointer}, Return address: ${returnAddress}`);
+        console.log(`Pushing frame ${this.getFrameCount() + 1} with Stack pointer: ${this.stackPointer}, Return address: ${returnAddress}`);
         const newFrame = {
             basePointer: this.stackPointer,
-            frameSize: 0,
-            returnAddress: this.getReturnAddress(),
-            borrowedValues: new Map(),
-            lifetimes: new Map(),
+            returnAddress: returnAddress || this.getReturnAddress(),
         };
         this.frames.push(newFrame);
-    }
-    // Exit a lexical scope and check for lifetime violations
-    exitScope() {
-        // Check for any values with lifetimes tied to this scope
-        if (this.frames.length > 0) {
-            const currentFrame = this.frames[this.frames.length - 1];
-            // Check for any values that should be dropped
-            for (const [address, lifetime] of currentFrame.lifetimes.entries()) {
-                if (lifetime > this.frames.length) {
-                    // Value's lifetime has ended, check if it's still borrowed
-                    if (currentFrame.borrowedValues.has(address)) {
-                        throw new Error(`Use of value after lifetime ended at address ${address}`);
-                    }
-                    // Remove the lifetime tracking for this value
-                    currentFrame.lifetimes.delete(address);
-                }
-            }
-        }
-    }
-    // Get a local variable from the current frame
-    getLocal(offset) {
-        const currentFrame = this.frames[this.frames.length - 1];
-        if (!currentFrame) {
-            throw new Error("No active frame");
-        }
-        if (offset < 0 || offset > currentFrame.frameSize) {
-            throw new Error(`Invalid frame offset: ${offset}, frame size: ${currentFrame.frameSize}`);
-        }
-        const index = currentFrame.basePointer + offset;
-        // Convert numeric representation back to boolean if needed
-        // This is a simplification - in a real implementation we'd need type information
-        console.log(`Getting value at offset ${offset} from frame ${this.frames.length - 1}`);
-        const value = this.data.getFloat64(index * RustLiteTypes_1.word_size, true);
-        console.log(`Value: ${value}`);
-        return value;
-    }
-    // Set a local variable in the current frame
-    setLocal(offset, value) {
-        const currentFrame = this.frames[this.frames.length - 1];
-        if (!currentFrame) {
-            throw new Error("No active frame");
-        }
-        if (offset < 0 || offset >= currentFrame.frameSize) {
-            throw new Error(`Invalid frame offset: ${offset}, frame size: ${currentFrame.frameSize}`);
-        }
-        const index = currentFrame.basePointer + offset;
-        const address = index * RustLiteTypes_1.word_size;
-        // Check if this value is borrowed immutably
-        if (currentFrame.borrowedValues.has(address) &&
-            !currentFrame.borrowedValues.get(address)) {
-            throw new Error(`Cannot modify a value that is borrowed immutably at offset ${offset}`);
-        }
-        // Store the value
-        let storageValue = typeof value === "number" ? value : value ? 1 : 0;
-        this.data.setFloat64(address, storageValue, true);
-        // Track the lifetime of this value
-        currentFrame.lifetimes.set(address, this.frames.length);
-    }
-    // Borrow a value (immutably or mutably)
-    borrowValue(offset, mutable) {
-        const currentFrame = this.frames[this.frames.length - 1];
-        if (!currentFrame) {
-            throw new Error("No active frame");
-        }
-        const index = currentFrame.basePointer + offset;
-        const address = index * RustLiteTypes_1.word_size;
-        // Check if this value is already borrowed mutably or trying to borrow mutably when already borrowed
-        if ((currentFrame.borrowedValues.has(address) &&
-            currentFrame.borrowedValues.get(address)) ||
-            (mutable && currentFrame.borrowedValues.has(address))) {
-            throw new Error(`Cannot borrow value ${mutable ? "mutably" : "immutably"} as it is already borrowed`);
-        }
-        // Mark as borrowed
-        currentFrame.borrowedValues.set(address, mutable);
-        // Return the address (which serves as a reference)
-        return address;
-    }
-    // Release a borrowed value
-    releaseBorrow(address) {
-        const currentFrame = this.frames[this.frames.length - 1];
-        if (!currentFrame) {
-            throw new Error("No active frame");
-        }
-        if (!currentFrame.borrowedValues.has(address)) {
-            throw new Error(`Attempting to release a value that is not borrowed at address ${address}`);
-        }
-        currentFrame.borrowedValues.delete(address);
     }
     // Get the return address from the current frame
     getReturnAddress() {
@@ -148,10 +108,6 @@ class RustLiteStack {
             throw new Error("No frame to pop");
         }
         const currentFrame = this.frames.pop();
-        // Check for any remaining borrowed values (would be a bug in real Rust)
-        if (currentFrame.borrowedValues.size > 0) {
-            console.warn(`Frame popped with ${currentFrame.borrowedValues.size} values still borrowed`);
-        }
         this.stackPointer = currentFrame.basePointer; // Reset stack pointer to base of current frame
     }
     // Get the number of frames
@@ -161,6 +117,7 @@ class RustLiteStack {
     // Get a specific frame
     getFrame(index) {
         if (index < 0 || index >= this.frames.length) {
+            this.dump();
             throw new Error(`Invalid frame index: ${index}`);
         }
         return this.frames[index];
@@ -169,25 +126,32 @@ class RustLiteStack {
     reset() {
         this.stackPointer = 0;
         this.frames = [];
-        this.valueStack = [];
     }
     // Debug dump of the stack state
     dump() {
         console.log("=== STACK DUMP ===");
         console.log(`Stack pointer: ${this.stackPointer}`);
-        console.log(`Value stack (${this.valueStack.length} items):`, this.valueStack);
         console.log(`Frames (${this.frames.length}):`);
         this.frames.forEach((frame, i) => {
-            console.log(`  Frame ${i}: BP=${frame.basePointer}, Size=${frame.frameSize}, RA=${frame.returnAddress}`);
-            console.log(`    Borrowed values: ${frame.borrowedValues.size}`);
-            console.log(`    Values with lifetimes: ${frame.lifetimes.size}`);
-            // Print actual values in this frame
-            for (let j = 0; j < frame.frameSize; j++) {
-                const addr = (frame.basePointer + j) * RustLiteTypes_1.word_size;
-                const value = this.data.getFloat64(addr, true);
-                console.log(`    [${j}]: ${value}`);
-            }
+            console.log(`  Frame ${i}: BP=${frame.basePointer}, RA=${frame.returnAddress}`);
         });
+        let currentFrame = 0;
+        let framePointer = currentFrame < this.frames.length
+            ? this.frames[currentFrame].basePointer
+            : -1;
+        // Print actual values in frame stack
+        console.log("===StackData===");
+        for (let i = 0; i < this.stackPointer; i += RustLiteTypes_2.word_size) {
+            if (i == framePointer) {
+                console.log(`=== Frame ${currentFrame + 1} ===`);
+                currentFrame++;
+                framePointer =
+                    currentFrame < this.frames.length
+                        ? this.frames[currentFrame].basePointer
+                        : -1;
+            }
+            console.log(`Data: ${this.data.getFloat64(i)}, Type: ${this.data.getUint8(i + RustLiteTypes_1.type_offset)}`);
+        }
         console.log("===================");
     }
     // Add a new method to explicitly set the return address for the current frame
@@ -205,14 +169,29 @@ class RustLiteStack {
             throw new Error(`Invalid frame index: ${frameIndex}, total frames: ${this.frames.length}`);
         }
         const frame = this.frames[frameIndex];
-        if (offset < 0 || offset >= frame.frameSize) {
-            throw new Error(`Invalid frame offset: ${offset}, frame size: ${frame.frameSize}`);
+        if (frameIndex >= this.frames.length) {
+            throw Error("Invalid frame index");
         }
-        const index = frame.basePointer + offset;
-        console.log(`Getting value at offset ${offset} from frame ${frameIndex}`);
-        const value = this.data.getFloat64(index * RustLiteTypes_1.word_size, true);
-        console.log(`Value: ${value}`);
-        return value;
+        const index = frame.basePointer + offset * RustLiteTypes_2.word_size;
+        console.log(`Getting value at offset ${offset} from frame ${frameIndex + 1} at index: ${index}`);
+        this.dump();
+        const value = this.data.getFloat64(index);
+        const type = this.data.getUint8(index + RustLiteTypes_1.type_offset);
+        let output;
+        if (type === RustLiteTypes_1.TypeTag.Bool) {
+            output = value === 0 ? false : true;
+        }
+        else if (type === RustLiteTypes_1.TypeTag.Int) {
+            output = value;
+        }
+        else if (type === RustLiteTypes_1.TypeTag.Address) {
+            output = { type: "address", value: value };
+        }
+        else {
+            throw new Error(`Unknown type tag: ${type}`);
+        }
+        console.log(`Output: ${output}, Type: ${type}`);
+        return output;
     }
 }
 exports.RustLiteStack = RustLiteStack;

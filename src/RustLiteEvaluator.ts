@@ -28,38 +28,39 @@ import {
   RustLiteParser,
   StmtContext,
   TypeContext,
-  VectorAssignmentContext,
   VectorExprContext,
   VectorIndexAccessContext,
   VectorInitContext,
   VectorLenContext,
-  VectorPopContext,
-  VectorPushContext,
   VectorTypeContext,
   WhileStmtContext,
 } from "./parser/src/RustLiteParser";
 import { GOTO, instruction, instruction_type } from "./RustLiteTypes";
 import {
+  allocate_vector,
   assign,
   binaryOperation,
   call,
   done,
   enterScope,
   exitScope,
+  get_vector,
   jump,
   jumpIfFalse,
   load,
   loadConstant,
   loadFunction,
+  pop,
   reset,
+  set_vector,
   unaryOperation,
 } from "./RustLiteCompiler";
 
 import { BasicEvaluator } from "conductor/dist/conductor/runner";
 import { IRunnerPlugin } from "conductor/dist/conductor/runner/types";
 import { RustLiteLexer } from "./parser/src/RustLiteLexer";
-import { RustLiteVisitor } from "./parser/src/RustLiteVisitor";
 import { RustLiteVirtualMachine } from "./RustLiteVirtualMachine";
+import { RustLiteVisitor } from "./parser/src/RustLiteVisitor";
 
 class RustLiteEvaluatorVisitor
   extends AbstractParseTreeVisitor<void>
@@ -317,12 +318,13 @@ class RustLiteEvaluatorVisitor
 
     // Find the number of local variables
     const [_, names] = this.scanForLocalVars(ctx);
+    console.log(`Local variables: ${names.toString()}`);
     const numLocals = names.length;
     this.instrs[this.wc++] = enterScope();
 
     // Track if we've seen a return statement
     let hasReturn = false;
-
+    console.log(`Number of statements: ${stmts.length}`);
     for (let stmt of stmts) {
       if (!stmt) continue;
       try {
@@ -362,16 +364,16 @@ class RustLiteEvaluatorVisitor
       if (declareStmt) {
         const type = declareStmt.type();
         const name = declareStmt.IDENTIFIER();
-        if (type && name) {
-          types.push(type.getText());
+        if (name) {
+          types.push(type?.getText() ?? "unknown");
           names.push(name.getText());
         }
       }
       if (fnDeclareStmt) {
         const fnName = fnDeclareStmt.IDENTIFIER();
         const retType = fnDeclareStmt.returnType();
-        if (fnName && retType) {
-          types.push(retType.getText());
+        if (fnName) {
+          types.push(retType?.getText() ?? "void");
           names.push(fnName.getText());
         }
       }
@@ -427,7 +429,6 @@ class RustLiteEvaluatorVisitor
   visitDeclareStmt(ctx: DeclareStmtContext): void {
     console.log(`Visiting DeclareStmt: ${ctx.getText()}`);
     const typeCtx = ctx.type();
-    const isMutable = ctx.MUT() ? true : false;
     const name = ctx.IDENTIFIER()?.getText();
     if (!name) throw new Error("Variable declaration requires a name");
 
@@ -639,12 +640,38 @@ class RustLiteEvaluatorVisitor
 
   visitVectorExpr(ctx: VectorExprContext): void {
     console.log("Visiting VectorExpr");
+    const vectorIndexAccess = ctx.vectorIndexAccess();
+    const vectorLen = ctx.vectorLen();
+    const vectorInit = ctx.vectorInit();
+    if (vectorIndexAccess)
+      return this.visitVectorIndexAccess(vectorIndexAccess);
+    if (vectorLen) return this.visitVectorLen(vectorLen);
+    if (vectorInit) return this.visitVectorInit(vectorInit);
     return;
   }
 
   visitVectorInit(ctx: VectorInitContext): void {
     console.log("Visiting VectorInit");
-    return;
+    if (ctx.NEW()) {
+      this.instrs[this.wc++] = allocate_vector(0);
+      return;
+    }
+    if (ctx.vectorInitList()) {
+      const vectorInitList = ctx.vectorInitList();
+      const elements = vectorInitList?.expr();
+
+      // TODO: Check if type of all elements is the same
+      const length = elements?.length ?? 0;
+      this.instrs[this.wc++] = allocate_vector(length);
+
+      for (let i = 0; i < length; i++) {
+        if (!elements || !elements[i]) continue;
+        this.instrs[this.wc++] = loadConstant(i); // Push index
+        this.visitExpr(elements[i]); // Push value
+        this.instrs[this.wc++] = set_vector(); // Set value at index
+      }
+    }
+    // Do not pop reference from stack so that it can be assigned
   }
 
   visitVectorType(ctx: VectorTypeContext): void {
@@ -652,28 +679,25 @@ class RustLiteEvaluatorVisitor
     return;
   }
 
-  visitVectorAssignment(ctx: VectorAssignmentContext): void {
-    console.log("Visiting VectorAssignment");
-    return;
-  }
-
   visitVectorIndexAccess(ctx: VectorIndexAccessContext): void {
     console.log("Visiting VectorIndexAccess");
+    const vector = ctx.IDENTIFIER();
+    const index = ctx.arithExpr();
+    if (!vector || !index) {
+      throw new Error("Invalid vector index access");
+    }
+    let vectorDetails = this.findParam(vector.toString());
+    this.instrs[this.wc++] = load(
+      vectorDetails.scopeLevel,
+      vectorDetails.offset
+    ); // Load vector reference
+    this.visitArithExpr(index); // Load index
+    this.instrs[this.wc++] = get_vector(); // Get value at index
     return;
   }
 
   visitVectorLen(ctx: VectorLenContext): void {
     console.log("Visiting VectorLen");
-    return;
-  }
-
-  visitVectorPop(ctx: VectorPopContext): void {
-    console.log("Visiting VectorPop");
-    return;
-  }
-
-  visitVectorPush(ctx: VectorPushContext): void {
-    console.log("Visiting VectorPush");
     return;
   }
 

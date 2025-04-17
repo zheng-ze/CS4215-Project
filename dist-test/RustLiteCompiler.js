@@ -15,6 +15,9 @@ exports.call = call;
 exports.tailCall = tailCall;
 exports.reset = reset;
 exports.done = done;
+exports.allocate_vector = allocate_vector;
+exports.set_vector = set_vector;
+exports.get_vector = get_vector;
 const RustLiteTypes_1 = require("./RustLiteTypes");
 function loadConstant(value) {
     return {
@@ -74,10 +77,9 @@ function load(level, offset) {
         pos: { first: level, second: offset },
     };
 }
-function assign(level, offset) {
+function assign() {
     return {
         type: RustLiteTypes_1.instruction_type.ASSIGN,
-        pos: { first: level, second: offset },
     };
 }
 function call(arity) {
@@ -100,5 +102,21 @@ function reset() {
 function done() {
     return {
         type: RustLiteTypes_1.instruction_type.DONE,
+    };
+}
+function allocate_vector(size) {
+    return {
+        type: RustLiteTypes_1.instruction_type.ALLOC_VECTOR,
+        size: size,
+    };
+}
+function set_vector() {
+    return {
+        type: RustLiteTypes_1.instruction_type.SET_VECTOR,
+    };
+}
+function get_vector() {
+    return {
+        type: RustLiteTypes_1.instruction_type.GET_VECTOR,
     };
 }

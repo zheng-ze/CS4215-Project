@@ -98,13 +98,13 @@ blockContent: stmt* (finalExpr=expr)?
 
 exprStmt: expr SEMICOLON;
 
-declareStmt: LET MUT? IDENTIFIER COLON type EQUALS expr SEMICOLON
-        | LET MUT? IDENTIFIER COLON type SEMICOLON
-        | LET MUT? IDENTIFIER EQUALS expr SEMICOLON
-        | LET MUT? IDENTIFIER {
+declareStmt: LET IDENTIFIER COLON type EQUALS expr SEMICOLON
+        | LET IDENTIFIER COLON type SEMICOLON
+        | LET IDENTIFIER EQUALS expr SEMICOLON
+        | LET IDENTIFIER {
                 this.notifyErrorListeners("Type annotations needed", null, null);
             } SEMICOLON? 
-        | LET MUT? (COLON type)? {this.notifyErrorListeners("Expected identifier", null, null);} (EQUALS COLON expr)? SEMICOLON;
+        | LET (COLON type)? {this.notifyErrorListeners("Expected identifier", null, null);} (EQUALS COLON expr)? SEMICOLON;
 
 condStmt: IF logicExpr block (ELSE IF logicExpr block)* (ELSE block)?
         | IF expr {
@@ -133,24 +133,18 @@ returnStmt: RETURN expr? SEMICOLON;
 fnDeclareStmt: FN IDENTIFIER ('(' paramList? ')' | '()')  returnType? block;
 
 argList: expr (',' expr)* ','?;
-fnCall: IDENTIFIER '(' argList? ')';
+fnCall: IDENTIFIER ('(' argList? ')' | '()');
 
 vectorType: VECTOR_MODULE_NAME LANGLE type RANGLE;
 vectorInit: VECTOR_MODULE_NAME METHOD_ACCESSOR NEW ('()' | '(' ')')
         | VEC '!' '[' vectorInitList? ']';
-vectorInitList: (INT | BOOL) (',' INT | BOOL)*;
-vectorPush: IDENTIFIER '.' PUSH '(' INT|BOOL ')';
-vectorPop: IDENTIFIER '.' POP ('()' | '(' ')');
+vectorInitList: expr (',' expr)*;
 vectorLen: IDENTIFIER '.' LEN ('()' | '(' ')');
-vectorIndexAccess: IDENTIFIER '[' expr ']';
-vectorAssignment: IDENTIFIER '[' expr ']' EQUALS vectorExpr;
+vectorIndexAccess: IDENTIFIER '[' arithExpr ']';
 
 vectorExpr: vectorInit
-        | vectorPush
-        | vectorPop
         | vectorLen
-        | vectorIndexAccess
-        | vectorAssignment;
+        | vectorIndexAccess;
         
 
 printlnMacro: PRINTLN '!' '(' printlnArgs ')';

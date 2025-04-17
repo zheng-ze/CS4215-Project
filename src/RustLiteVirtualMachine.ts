@@ -1,133 +1,24 @@
 import {
+  ALLOC_VECTOR,
   ASSIGN,
   BINOP,
-  CALL,
-  ENTER_SCOPE,
-  EXIT_SCOPE,
   GOTO,
   JOF,
   LD,
   LDC,
   LDF,
-  Pair,
-  RESET,
   SUPPORTED_TYPES,
-  TAIL_CALL,
+  TypeTag,
   UNOP,
   instruction,
   instruction_type,
-  max_words,
-  node_size,
-  size_offset,
-  word_size,
 } from "./RustLiteTypes";
 
+import { Heap } from "./RustLiteHeap";
 import { RustLiteStack } from "./RustLiteStack";
-import { off } from "process";
 
 interface VirtualMachineMicrocode {
   [key: string]: (instr: instruction) => void;
-}
-
-enum HeapTag {
-  Bool = 0,
-  Number = 1,
-  Blockframe = 2,
-  Callframe = 3,
-  Frame = 5,
-  Struct = 7,
-}
-
-function peek(array: SUPPORTED_TYPES[], index: number): SUPPORTED_TYPES {
-  if (index < 0 || index >= array.length) {
-    throw new Error("Index out of bounds");
-  }
-  return array.slice(-1 - index)[0];
-}
-
-class Heap {
-  data: DataView;
-  free: number;
-
-  constructor(numWords: number) {
-    const buffer = new ArrayBuffer(numWords * word_size);
-    this.data = new DataView(buffer);
-
-    // Initialize free list
-    this.free = 0;
-
-    // Set up the free list chain
-    for (let i = 0; i < numWords - 1; i++) {
-      this.set(i * word_size, (i + 1) * word_size);
-    }
-
-    // Mark the end of the free list
-    this.set((numWords - 1) * word_size, -1);
-  }
-
-  get(index: number): number {
-    return this.data.getFloat64(index);
-  }
-
-  set(address: number, value: number): void {
-    this.data.setFloat64(address, value);
-  }
-
-  allocate(tag: HeapTag, size: number): number {
-    if (size > node_size) {
-      throw new Error(
-        `limitation: nodes cannot be larger than ${node_size} words`
-      );
-    }
-
-    if (this.free === -1) {
-      throw new Error("heap memory exhausted");
-    }
-
-    const address = this.free;
-    this.free = this.get(this.free);
-    this.data.setInt8(address * word_size, tag);
-    this.data.setUint16(address * word_size + size_offset, size);
-    return address;
-  }
-
-  get_at_offset(address: number, offset: number): number {
-    return this.data.getUint8(address * word_size + offset);
-  }
-
-  set_at_offset(address: number, offset: number, value: number): void {
-    this.data.setUint8(address * word_size + offset, value);
-  }
-
-  get_2_at_offset(address: number, offset: number): number {
-    return this.data.getUint16(address * word_size + offset);
-  }
-
-  set_2_at_offset(address: number, offset: number, value: number): void {
-    this.data.setUint16(address * word_size + offset, value);
-  }
-
-  getTag(address: number): HeapTag {
-    return this.data.getInt8(address * word_size);
-  }
-
-  getSize(address: number): number {
-    return this.data.getUint16(address * word_size + size_offset);
-  }
-
-  get_child(address: number, child_index: number): number {
-    return this.get(address + 1 + child_index);
-  }
-
-  set_child(address: number, child_index: number, value: number): void {
-    this.set(address + 1 + child_index, value);
-  }
-
-  get_num_children(address: number): number {
-    return this.getTag(address) === HeapTag.Number
-      ? 0
-      : this.getSize(address) - 1;
-  }
 }
 
 interface VirtualMachine<T> {
@@ -314,6 +205,10 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     // },
 
     [instruction_type.RESET]: this.handle_reset_instr.bind(this),
+
+    [instruction_type.ALLOC_VECTOR]: this.handle_alloc_vector.bind(this),
+    [instruction_type.SET_VECTOR]: this.handle_set_vector.bind(this),
+    [instruction_type.GET_VECTOR]: this.handle_get_vector.bind(this),
   };
 
   //Load Constant, for example when we are just calling a primitive value like 1;
@@ -504,5 +399,60 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       throw new Error("JOF: Value not found in stack");
     if (condition) return;
     this.pc = jof.addr;
+  }
+
+  private handle_alloc_vector(instr: instruction) {
+    const alloc = instr as ALLOC_VECTOR;
+    const size = alloc.size;
+    if (size < 0) {
+      throw new Error("ALLOC_VECTOR: Size cannot be negative");
+    }
+    const addr = this.heap.allocate_vector(size);
+    this.os.push({ type: "address", value: addr });
+    console.log(
+      `Allocated vector of size ${size} at address ${addr}, current free list head: ${this.heap.free}`
+    );
+  }
+
+  private handle_set_vector(instr: instruction) {
+    console.log("OS", this.os);
+    const value = this.os.pop();
+    const index = this.os.pop();
+    if (typeof index !== "number" || index < 0) {
+      throw new Error("SET_VECTOR: Index must be a non-negative number");
+    }
+    if (value == undefined) {
+      throw new Error("SET_VECTOR: Value not found in stack");
+    }
+    const addr = this.os.slice(-1)[0];
+    if (typeof addr !== "object" || addr.type !== "address") {
+      throw new Error("SET_VECTOR: Invalid address: " + JSON.stringify(addr));
+    }
+    this.heap.set_vector_node(addr.value, index, value, TypeTag.Int);
+  }
+  private handle_get_vector(instr: instruction) {
+    console.log("OS", this.os);
+    const index = this.os.pop();
+    if (typeof index !== "number" || index < 0) {
+      throw new Error(`Invalid vector index: ${index}`);
+    }
+    let vectorAddr = this.os.pop();
+    if (typeof vectorAddr !== "object" || vectorAddr.type !== "address") {
+      throw new Error(`Invalid vector address: ${JSON.stringify(vectorAddr)}`);
+    }
+    vectorAddr = vectorAddr.value;
+
+    if (!this.heap.isVectorAddress(vectorAddr))
+      throw new Error("Invalid vector address");
+
+    // Get the vector node
+    let [value, tag] = this.heap.get_vector_node(vectorAddr, index);
+    if (tag === TypeTag.Address) {
+      throw new Error(`Nested vectors are not supported. Address: ${value}`);
+    }
+    console.log(
+      `GET_VECTOR: Retrieved value ${value} from address ${vectorAddr}, index ${index}`
+    );
+    this.os.push(value);
   }
 }

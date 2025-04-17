@@ -2,84 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RustLiteVirtualMachine = void 0;
 const RustLiteTypes_1 = require("./RustLiteTypes");
+const RustLiteHeap_1 = require("./RustLiteHeap");
 const RustLiteStack_1 = require("./RustLiteStack");
-var HeapTag;
-(function (HeapTag) {
-    HeapTag[HeapTag["Bool"] = 0] = "Bool";
-    HeapTag[HeapTag["Number"] = 1] = "Number";
-    HeapTag[HeapTag["Blockframe"] = 2] = "Blockframe";
-    HeapTag[HeapTag["Callframe"] = 3] = "Callframe";
-    HeapTag[HeapTag["Frame"] = 5] = "Frame";
-    HeapTag[HeapTag["Struct"] = 7] = "Struct";
-})(HeapTag || (HeapTag = {}));
-function peek(array, index) {
-    if (index < 0 || index >= array.length) {
-        throw new Error("Index out of bounds");
-    }
-    return array.slice(-1 - index)[0];
-}
-class Heap {
-    constructor(numWords) {
-        const buffer = new ArrayBuffer(numWords * RustLiteTypes_1.word_size);
-        this.data = new DataView(buffer);
-        // Initialize free list
-        this.free = 0;
-        // Set up the free list chain
-        for (let i = 0; i < numWords - 1; i++) {
-            this.set(i * RustLiteTypes_1.word_size, (i + 1) * RustLiteTypes_1.word_size);
-        }
-        // Mark the end of the free list
-        this.set((numWords - 1) * RustLiteTypes_1.word_size, -1);
-    }
-    get(index) {
-        return this.data.getFloat64(index);
-    }
-    set(address, value) {
-        this.data.setFloat64(address, value);
-    }
-    allocate(tag, size) {
-        if (size > RustLiteTypes_1.node_size) {
-            throw new Error(`limitation: nodes cannot be larger than ${RustLiteTypes_1.node_size} words`);
-        }
-        if (this.free === -1) {
-            throw new Error("heap memory exhausted");
-        }
-        const address = this.free;
-        this.free = this.get(this.free);
-        this.data.setInt8(address * RustLiteTypes_1.word_size, tag);
-        this.data.setUint16(address * RustLiteTypes_1.word_size + RustLiteTypes_1.size_offset, size);
-        return address;
-    }
-    get_at_offset(address, offset) {
-        return this.data.getUint8(address * RustLiteTypes_1.word_size + offset);
-    }
-    set_at_offset(address, offset, value) {
-        this.data.setUint8(address * RustLiteTypes_1.word_size + offset, value);
-    }
-    get_2_at_offset(address, offset) {
-        return this.data.getUint16(address * RustLiteTypes_1.word_size + offset);
-    }
-    set_2_at_offset(address, offset, value) {
-        this.data.setUint16(address * RustLiteTypes_1.word_size + offset, value);
-    }
-    getTag(address) {
-        return this.data.getInt8(address * RustLiteTypes_1.word_size);
-    }
-    getSize(address) {
-        return this.data.getUint16(address * RustLiteTypes_1.word_size + RustLiteTypes_1.size_offset);
-    }
-    get_child(address, child_index) {
-        return this.get(address + 1 + child_index);
-    }
-    set_child(address, child_index, value) {
-        this.set(address + 1 + child_index, value);
-    }
-    get_num_children(address) {
-        return this.getTag(address) === HeapTag.Number
-            ? 0
-            : this.getSize(address) - 1;
-    }
-}
 class RustLiteVirtualMachine {
     constructor(instrs) {
         this.microcode = {
@@ -89,18 +13,11 @@ class RustLiteVirtualMachine {
             [RustLiteTypes_1.instruction_type.POP]: (instr) => {
                 this.stack.pop();
             },
-            [RustLiteTypes_1.instruction_type.JOF]: (instr) => {
-                const jof = instr;
-                const condition = this.stack.pop();
-                // Jump if condition is falsy (0 or false)
-                if (condition === 0 || condition === false) {
-                    this.pc = jof.addr;
-                }
-            },
+            [RustLiteTypes_1.instruction_type.JOF]: this.handle_jof_instr.bind(this),
             [RustLiteTypes_1.instruction_type.GOTO]: this.handle_goto_instr.bind(this),
             [RustLiteTypes_1.instruction_type.ENTER_SCOPE]: this.handle_enter_scope.bind(this),
             [RustLiteTypes_1.instruction_type.EXIT_SCOPE]: this.handle_exit_scope.bind(this),
-            [RustLiteTypes_1.instruction_type.LD]: this.handle_load_instruction.bind(this),
+            [RustLiteTypes_1.instruction_type.LD]: this.handle_ld_instruction.bind(this),
             [RustLiteTypes_1.instruction_type.ASSIGN]: this.handle_assign_instruction.bind(this),
             [RustLiteTypes_1.instruction_type.LDF]: this.handle_ldf_instruction.bind(this),
             // [instruction_type.CALL]: (instr: instruction) => {
@@ -186,6 +103,9 @@ class RustLiteVirtualMachine {
             //   );
             // },
             [RustLiteTypes_1.instruction_type.RESET]: this.handle_reset_instr.bind(this),
+            [RustLiteTypes_1.instruction_type.ALLOC_VECTOR]: this.handle_alloc_vector.bind(this),
+            [RustLiteTypes_1.instruction_type.SET_VECTOR]: this.handle_set_vector.bind(this),
+            [RustLiteTypes_1.instruction_type.GET_VECTOR]: this.handle_get_vector.bind(this),
         };
         this.unop_microcode = {
             "-unary": (num) => -num,
@@ -215,8 +135,9 @@ class RustLiteVirtualMachine {
             "||": (left, right) => left || right,
         };
         this.instrs = instrs;
+        this.os = [];
         this.stack = new RustLiteStack_1.RustLiteStack();
-        this.heap = new Heap(100);
+        this.heap = new RustLiteHeap_1.Heap(100);
         this.pc = 0;
     }
     run() {
@@ -235,11 +156,13 @@ class RustLiteVirtualMachine {
             }
         }
         // Return the value directly from stack since we store primitives there
-        return this.stack.peek();
+        console.log(this.stack.dump());
+        return this.os.pop() || 0;
     }
     reset() {
         this.stack.reset();
-        this.heap = new Heap(100);
+        this.os = [];
+        this.heap = new RustLiteHeap_1.Heap(100);
         this.pc = 0;
     }
     //Load Constant, for example when we are just calling a primitive value like 1;
@@ -247,7 +170,7 @@ class RustLiteVirtualMachine {
         const ldc = instr;
         if (typeof ldc.val === "number" || typeof ldc.val === "boolean") {
             // Store primitives directly on the stack
-            this.stack.push(ldc.val);
+            this.os.push(ldc.val);
         }
         else {
             console.log("Non Primitive Value");
@@ -256,9 +179,13 @@ class RustLiteVirtualMachine {
     //Unary Operator Handling for default operations with only one argument like ! or (-)
     handle_unop_instruction(instr) {
         const unop = instr;
-        const arg = this.stack.pop();
+        const arg = this.os.pop();
+        if (arg == undefined) {
+            throw Error("UNOP Argument not found on OS");
+        }
         const result = this.apply_unop(unop.sym, arg);
-        this.stack.push(result);
+        if (result)
+            this.os.push(result);
     }
     apply_unop(op, value) {
         // Convert numeric 0/1 to boolean for boolean operations
@@ -271,10 +198,15 @@ class RustLiteVirtualMachine {
     //Pre Condition: left and right arguments should have already been pushed onto the stack in the order [left, right]
     handle_binop_instruction(instr) {
         const binop = instr;
-        const right = this.stack.pop();
-        const left = this.stack.pop();
+        const right = this.os.pop();
+        const left = this.os.pop();
+        if (left == undefined || right == undefined) {
+            throw Error("Values not present in the OS");
+        }
         const result = this.apply_binop(binop.sym, left, right);
-        this.stack.push(result);
+        console.log(`Applied BINOP: ${binop.sym}, LEFT: ${left}, RIGHT: ${right}, RESULT: ${result}`);
+        if (result)
+            this.os.push(result);
     }
     apply_binop(op, left, right) {
         const operation = this.binop_microcode[op];
@@ -303,7 +235,6 @@ class RustLiteVirtualMachine {
         const goto = inst;
         console.log(`Jumping to address ${goto.addr}`);
         // console.log("Current PC:", this.pc);
-        console.log("This: ", this);
         this.pc = goto.addr;
     }
     //Enters a new scope and creates a new frame on the stack
@@ -315,22 +246,34 @@ class RustLiteVirtualMachine {
         this.stack.popFrame();
     }
     //Loads value into stack by getting values stack frame
-    handle_load_instruction(ins) {
+    handle_ld_instruction(ins) {
         const instr = ins;
         const frame_index = instr?.pos?.first;
         const offset = instr?.pos?.second;
         const value = this.stack.getLocalFromFrame(frame_index, offset);
-        this.stack.push(value);
+        console.log(`pushed value: ${value} to top of the stack`);
+        if (value == undefined)
+            throw new Error("Value not found in stack");
+        this.os.push(value);
     }
     //Assigns a value to the current scope by pushing it onto the stack
     handle_assign_instruction(inst) {
         const instr = inst;
-        this.stack.push(instr.pos.first);
+        const val = this.os.pop();
+        if (val == undefined)
+            throw new Error("ASSIGN: Value not found in stack");
+        this.stack.push(val);
     }
     //Loads a function into memory by creating a new frame on the stack with return address at current pc + 1
     handle_ldf_instruction(instr) {
         const ldf = instr;
         this.stack.pushFrame(this.pc++);
+        for (let i = 0; i < ldf.arity; i++) {
+            let val = this.os.pop();
+            if (val == undefined)
+                throw new Error("LDF: Value not found in stack");
+            this.stack.push(val);
+        }
         this.pc = ldf.addr;
     }
     handle_reset_instr(instr) {
@@ -340,7 +283,7 @@ class RustLiteVirtualMachine {
             throw Error("Return Address cannot be undefined");
         }
         // Get the return value from the top of the stack
-        const returnValue = this.stack.peek();
+        const returnValue = this.os.pop();
         console.log(`Return value before frame pop: ${returnValue}`);
         //Need to pop frames until we completely exit the function
         while (this.stack.getFrameCount() &&
@@ -348,7 +291,67 @@ class RustLiteVirtualMachine {
             this.stack.popFrame();
         }
         this.pc = returnAddr;
-        this.stack.push(returnValue);
+        if (returnValue)
+            this.os.push(returnValue);
+    }
+    handle_jof_instr(instr) {
+        const jof = instr;
+        console.log(`Stack: ${this.os}`);
+        const condition = this.os.pop();
+        console.log(`Predicate value: ${condition}`);
+        // Jump if condition is falsy (0 or false)
+        if (condition == undefined)
+            throw new Error("JOF: Value not found in stack");
+        if (condition)
+            return;
+        this.pc = jof.addr;
+    }
+    handle_alloc_vector(instr) {
+        const alloc = instr;
+        const size = alloc.size;
+        if (size < 0) {
+            throw new Error("ALLOC_VECTOR: Size cannot be negative");
+        }
+        const addr = this.heap.allocate_vector(size);
+        this.os.push({ type: "address", value: addr });
+        console.log(`Allocated vector of size ${size} at address ${addr}, current free list head: ${this.heap.free}`);
+    }
+    handle_set_vector(instr) {
+        console.log("OS", this.os);
+        const value = this.os.pop();
+        const index = this.os.pop();
+        if (typeof index !== "number" || index < 0) {
+            throw new Error("SET_VECTOR: Index must be a non-negative number");
+        }
+        if (value == undefined) {
+            throw new Error("SET_VECTOR: Value not found in stack");
+        }
+        const addr = this.os.slice(-1)[0];
+        if (typeof addr !== "object" || addr.type !== "address") {
+            throw new Error("SET_VECTOR: Invalid address: " + JSON.stringify(addr));
+        }
+        this.heap.set_vector_node(addr.value, index, value, RustLiteTypes_1.TypeTag.Int);
+    }
+    handle_get_vector(instr) {
+        console.log("OS", this.os);
+        const index = this.os.pop();
+        if (typeof index !== "number" || index < 0) {
+            throw new Error(`Invalid vector index: ${index}`);
+        }
+        let vectorAddr = this.os.pop();
+        if (typeof vectorAddr !== "object" || vectorAddr.type !== "address") {
+            throw new Error(`Invalid vector address: ${JSON.stringify(vectorAddr)}`);
+        }
+        vectorAddr = vectorAddr.value;
+        if (!this.heap.isVectorAddress(vectorAddr))
+            throw new Error("Invalid vector address");
+        // Get the vector node
+        let [value, tag] = this.heap.get_vector_node(vectorAddr, index);
+        if (tag === RustLiteTypes_1.TypeTag.Address) {
+            throw new Error(`Nested vectors are not supported. Address: ${value}`);
+        }
+        console.log(`GET_VECTOR: Retrieved value ${value} from address ${vectorAddr}, index ${index}`);
+        this.os.push(value);
     }
 }
 exports.RustLiteVirtualMachine = RustLiteVirtualMachine;

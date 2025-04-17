@@ -1,9 +1,5 @@
 fn main() {
-  let x: u8 = 5;
-  let y: u8 = 10;
-  fn sum(a: u8, b: u8) -> u8{
-    return b - a;
-  }
-  let z = sum(x, y);
-  return z;
+  let a: Vec<u8> = vec![10, 20, 30];
+  let b = a[0];
+  return b;
 }
