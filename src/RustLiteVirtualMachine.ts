@@ -205,6 +205,10 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     // },
 
     [instruction_type.RESET]: this.handle_reset_instr.bind(this),
+
+    [instruction_type.ALLOC_VECTOR]: this.handle_alloc_vector.bind(this),
+    [instruction_type.SET_VECTOR]: this.handle_set_vector.bind(this),
+    [instruction_type.GET_VECTOR]: this.handle_get_vector.bind(this),
   };
 
   //Load Constant, for example when we are just calling a primitive value like 1;
@@ -391,8 +395,64 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     const condition = this.os.pop();
     console.log(`Predicate value: ${condition}`);
     // Jump if condition is falsy (0 or false)
-    if (condition == undefined) throw new Error("JOF: Value not found in stack");
+    if (condition == undefined)
+      throw new Error("JOF: Value not found in stack");
     if (condition) return;
     this.pc = jof.addr;
+  }
+
+  private handle_alloc_vector(instr: instruction) {
+    const alloc = instr as ALLOC_VECTOR;
+    const size = alloc.size;
+    if (size < 0) {
+      throw new Error("ALLOC_VECTOR: Size cannot be negative");
+    }
+    const addr = this.heap.allocate_vector(size);
+    this.os.push({ type: "address", value: addr });
+    console.log(
+      `Allocated vector of size ${size} at address ${addr}, current free list head: ${this.heap.free}`
+    );
+  }
+
+  private handle_set_vector(instr: instruction) {
+    console.log("OS", this.os);
+    const value = this.os.pop();
+    const index = this.os.pop();
+    if (typeof index !== "number" || index < 0) {
+      throw new Error("SET_VECTOR: Index must be a non-negative number");
+    }
+    if (value == undefined) {
+      throw new Error("SET_VECTOR: Value not found in stack");
+    }
+    const addr = this.os.slice(-1)[0];
+    if (typeof addr !== "object" || addr.type !== "address") {
+      throw new Error("SET_VECTOR: Invalid address: " + JSON.stringify(addr));
+    }
+    this.heap.set_vector_node(addr.value, index, value, TypeTag.Int);
+  }
+  private handle_get_vector(instr: instruction) {
+    console.log("OS", this.os);
+    const index = this.os.pop();
+    if (typeof index !== "number" || index < 0) {
+      throw new Error(`Invalid vector index: ${index}`);
+    }
+    let vectorAddr = this.os.pop();
+    if (typeof vectorAddr !== "object" || vectorAddr.type !== "address") {
+      throw new Error(`Invalid vector address: ${JSON.stringify(vectorAddr)}`);
+    }
+    vectorAddr = vectorAddr.value;
+
+    if (!this.heap.isVectorAddress(vectorAddr))
+      throw new Error("Invalid vector address");
+
+    // Get the vector node
+    let [value, tag] = this.heap.get_vector_node(vectorAddr, index);
+    if (tag === TypeTag.Address) {
+      throw new Error(`Nested vectors are not supported. Address: ${value}`);
+    }
+    console.log(
+      `GET_VECTOR: Retrieved value ${value} from address ${vectorAddr}, index ${index}`
+    );
+    this.os.push(value);
   }
 }

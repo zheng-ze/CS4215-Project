@@ -671,6 +671,7 @@ class RustLiteEvaluatorVisitor
         this.instrs[this.wc++] = set_vector(); // Set value at index
       }
     }
+    // Do not pop reference from stack so that it can be assigned
   }
 
   visitVectorType(ctx: VectorTypeContext): void {

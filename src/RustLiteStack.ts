@@ -1,12 +1,14 @@
-import { error } from "console";
 import {
   GOTO,
   SUPPORTED_TYPES,
+  TypeTag,
   instruction,
   instruction_type,
+  type_offset,
 } from "./RustLiteTypes";
+import { max_words, word_size } from "./RustLiteTypes";
 
-import { word_size, max_words } from "./RustLiteTypes";
+import { error } from "console";
 
 interface StackFrame {
   basePointer: number; // Points to the start of this frame in the stack
@@ -26,15 +28,22 @@ export class RustLiteStack {
 
   public push(value: SUPPORTED_TYPES) {
     let val;
+    let type: TypeTag;
     if (typeof value === "boolean") {
       val = value ? 1 : 0;
+      type = TypeTag.Bool;
     } else if (typeof value === "number") {
       val = value;
+      type = TypeTag.Int;
+    } else if (typeof value === "object" && value.type === "address") {
+      val = value.value;
+      type = TypeTag.Address;
     } else {
       throw error(`Data type not supported: ${typeof value}`);
     }
     console.log(`Set value: ${val} at SP: ${this.stackPointer}`);
-    this.data.setFloat64(this.stackPointer, val);
+    this.data.setFloat64(this.stackPointer, val); // store the value
+    this.data.setUint8(this.stackPointer + type_offset, type); // store the type
     this.stackPointer += word_size;
   }
 
@@ -44,7 +53,18 @@ export class RustLiteStack {
     }
     this.stackPointer -= word_size;
     let res = this.data.getFloat64(this.stackPointer);
-    return res;
+    let type = this.data.getUint8(this.stackPointer + type_offset);
+    let output: SUPPORTED_TYPES;
+    if (type === TypeTag.Bool) {
+      output = res === 0 ? false : true;
+    } else if (type === TypeTag.Int) {
+      output = res;
+    } else if (type === TypeTag.Address) {
+      output = { type: "address", value: res };
+    } else {
+      throw new Error(`Unknown type tag: ${type}`);
+    }
+    return output;
   }
 
   // Peek at the top value without popping
@@ -52,7 +72,19 @@ export class RustLiteStack {
     if (this.stackPointer < 0) {
       throw new Error("Value stack is empty");
     }
-    return this.data.getFloat64(this.stackPointer);
+    const data = this.data.getFloat64(this.stackPointer);
+    const type = this.data.getUint8(this.stackPointer + type_offset);
+    let output: SUPPORTED_TYPES;
+    if (type === TypeTag.Bool) {
+      output = data === 0 ? false : true;
+    } else if (type === TypeTag.Int) {
+      output = data;
+    } else if (type === TypeTag.Address) {
+      output = { type: "address", value: data };
+    } else {
+      throw new Error(`Unknown type tag: ${type}`);
+    }
+    return output;
   }
 
   // Create a new stack frame with specified size
@@ -152,7 +184,11 @@ export class RustLiteStack {
             ? this.frames[currentFrame].basePointer
             : -1;
       }
-      console.log(this.data.getFloat64(i));
+      console.log(
+        `Data: ${this.data.getFloat64(i)}, Type: ${this.data.getUint8(
+          i + type_offset
+        )}`
+      );
     }
     console.log("===================");
   }
@@ -195,9 +231,21 @@ export class RustLiteStack {
       } at index: ${index}`
     );
     this.dump();
+
     const value = this.data.getFloat64(index);
-    console.log(`Value: ${value}`);
-    return value;
+    const type = this.data.getUint8(index + type_offset);
+    let output: SUPPORTED_TYPES;
+    if (type === TypeTag.Bool) {
+      output = value === 0 ? false : true;
+    } else if (type === TypeTag.Int) {
+      output = value;
+    } else if (type === TypeTag.Address) {
+      output = { type: "address", value: value };
+    } else {
+      throw new Error(`Unknown type tag: ${type}`);
+    }
+    console.log(`Output: ${output}, Type: ${type}`);
+    return output;
   }
 
   // // Set a local variable in a specific frame by index
