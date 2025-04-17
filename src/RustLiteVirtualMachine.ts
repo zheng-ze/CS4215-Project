@@ -335,7 +335,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       throw Error("UNOP Argument not found on OS");
     }
     const result = this.apply_unop(unop.sym, arg);
-    if (result) this.os.push(result);
+    if (result != undefined) this.os.push(result);
   }
 
   private unop_microcode: any = {
@@ -365,7 +365,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     console.log(
       `Applied BINOP: ${binop.sym}, LEFT: ${left}, RIGHT: ${right}, RESULT: ${result}`
     );
-    if (result) this.os.push(result);
+    if (result != undefined) this.os.push(result);
   }
 
   private binop_microcode: any = {
@@ -374,7 +374,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     "*": (left: number, right: number) => left * right,
     "/": (left: number, right: number) => {
       if (right === 0) throw new Error("Division by zero");
-      return left / right;
+      return Math.floor(left / right);
     },
     "%": (left: number, right: number) => {
       if (right === 0) throw new Error("Modulo by zero");
@@ -491,7 +491,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     }
 
     this.pc = returnAddr;
-    if (returnValue) this.os.push(returnValue);
+    if (returnValue != undefined) this.os.push(returnValue);
   }
 
   private handle_jof_instr(instr: instruction) {
@@ -500,7 +500,8 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     const condition = this.os.pop();
     console.log(`Predicate value: ${condition}`);
     // Jump if condition is falsy (0 or false)
-    if (condition == undefined) throw new Error("JOF: Value not found in stack");
+    if (condition == undefined)
+      throw new Error("JOF: Value not found in stack");
     if (condition) return;
     this.pc = jof.addr;
   }
