@@ -447,8 +447,10 @@ class RustLiteEvaluatorVisitor
     console.log("Visiting CondStmt");
     const predicates = ctx.logicExpr();
     let jumps: GOTO[] = [];
+
     if (!predicates)
       throw new Error("Predicate is missing from conditional statement");
+
     for (let i = 0; i < predicates.length; i++) {
       const predicate = predicates[i];
       if (!predicate) continue;
@@ -462,11 +464,14 @@ class RustLiteEvaluatorVisitor
       const jumpToEnd = jump(0);
       this.instrs[this.wc++] = jumpToEnd;
       jumps.push(jumpToEnd);
-      temp.addr = this.wc + 1;
+      temp.addr = this.wc;
     }
+
     const lastBlock = ctx.block(predicates.length);
     if (!lastBlock) throw new Error("Else block is missing");
     this.visitBlock(lastBlock);
+
+    // Ensure that all the blocks return to the end of the conditional
     for (let i = 0; i < jumps.length; i++) {
       const jump = jumps[i];
       if (!jump) continue;

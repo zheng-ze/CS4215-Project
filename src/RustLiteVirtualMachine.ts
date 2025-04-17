@@ -356,8 +356,11 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
   private handle_binop_instruction(instr: instruction) {
     const binop = instr as BINOP;
+    console.log(`Stack: ${this.os}`);
     const right = this.os.pop();
+    console.log(`Right value: ${right}`);
     const left = this.os.pop();
+    console.log(`Left value: ${left}`);
     if (left == null || right == null) {
       throw Error("Values not present in the OS");
     }
@@ -447,7 +450,8 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     const offset = instr?.pos?.second;
     const value = this.stack.getLocalFromFrame(frame_index, offset);
     console.log(`pushed value: ${value} to top of the stack`);
-    if (value) this.os.push(value);
+    if (value == null) throw new Error("Value not found in stack");
+    this.os.push(value);
   }
 
   //Assigns a value to the current scope by pushing it onto the stack
