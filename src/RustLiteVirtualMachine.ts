@@ -494,9 +494,11 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   private handle_jof_instr(instr: instruction) {
     const jof = instr as JOF;
     const condition = this.os.pop();
+    console.log(`Predicate value: ${condition}`);
     // Jump if condition is falsy (0 or false)
-    if (condition === 0 || condition === false) {
-      this.pc = jof.addr;
+    if (condition) {
+      return;
     }
+    this.pc = jof.addr;
   }
 }
