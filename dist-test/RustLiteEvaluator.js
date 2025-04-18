@@ -15,8 +15,9 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         this.wc = 0;
         this.instrs = [];
         this.scopeList = []; // Track variable offsets in current scope
-        this.functionTable = new Map(); // Track function addresses
-        this.functionScopeMap = new Map();
+        this.functionTables = [
+            new Map(),
+        ];
     }
     visitProg(ctx) {
         console.log(`Visiting Program, text parsed: ${ctx.getText()}`);
@@ -43,7 +44,7 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
             ];
         }
         // After processing all global elements, call main if it exists
-        const mainAddr = this.functionTable.get("main");
+        const mainAddr = this.getFnAddr("main");
         if (mainAddr !== undefined) {
             this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadFunction)(0, mainAddr); // Load the function
             // this.instrs[this.wc++] = call(0); // Call main with 0 arguments
@@ -96,6 +97,35 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         if (vectorExprCtx)
             return this.visitVectorExpr(vectorExprCtx);
     }
+    findFunction(name) {
+        console.log(`Finding Function :${name}`);
+        for (let i = this.functionTables.length - 1; i >= 0; i--) {
+            const currFnTable = this.functionTables[i];
+            let tple = currFnTable.get(name);
+            if (tple === undefined) {
+                console.log(`Unable to find function :${name} in current scope`);
+            }
+            else {
+                console.log(`Found Function: ${name}, Scope: ${tple.first}, Address: ${tple.second}`);
+                return { addr: tple.second, scope: tple.first };
+            }
+        }
+        throw new Error(`Undefined Function: ${name}`);
+    }
+    getFnAddr(name) {
+        let fnData = this.findFunction(name);
+        return fnData.addr;
+    }
+    getFnScope(name) {
+        let fnData = this.findFunction(name);
+        return fnData.scope;
+    }
+    setFunctionScope(name, scope) {
+        let fnData = this.findFunction(name);
+        let oldScope = fnData.scope;
+        fnData.scope = scope;
+        console.log(`Changed function Scope From: ${oldScope} To: ${fnData.scope}`);
+    }
     findParam(name) {
         console.log(`Finding param: ${name}`);
         console.log(`Current Length of ScopeList: ${this.scopeList.length}`);
@@ -117,6 +147,7 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         console.log("Visiting ArithExpr");
         const int = ctx.INT();
         const identifier = ctx.IDENTIFIER();
+        const fnCallCtx = ctx.fnCall();
         const innerCtx = ctx._inner;
         const opText = ctx._op?.text;
         const leftCtx = ctx._left;
@@ -125,6 +156,9 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
             console.log(`Loading Constant: ${parseInt(int.getText())}`);
             this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(parseInt(int.getText()));
             return;
+        }
+        if (fnCallCtx) {
+            this.visitFnCall(fnCallCtx);
         }
         if (identifier) {
             const name = identifier.getText();
@@ -153,6 +187,7 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         console.log("Visiting LogicExpr");
         const bool = ctx.BOOL();
         const identifier = ctx.IDENTIFIER();
+        const fnCallCtx = ctx.fnCall();
         const innerCtx = ctx._inner;
         const arithLeftCtx = ctx._arithLeft;
         const arithRightCtx = ctx._arithRight;
@@ -162,6 +197,9 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         if (bool) {
             this.instrs[this.wc++] = (0, RustLiteCompiler_1.loadConstant)(bool.getText() === "true");
             return;
+        }
+        if (fnCallCtx) {
+            this.visitFnCall(fnCallCtx);
         }
         if (identifier) {
             const name = identifier.getText();
@@ -236,6 +274,7 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
             throw Error("Error while creating new scope");
         }
         this.scopeList.push(currentScope);
+        this.functionTables.push(new Map());
         const stmts = ctx.stmt();
         // Find the number of local variables
         const [_, names] = this.scanForLocalVars(ctx);
@@ -266,6 +305,7 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
             this.instrs[this.wc++] = (0, RustLiteCompiler_1.exitScope)();
         }
         // Restore outer scope when exiting
+        this.functionTables.pop();
         this.scopeList.pop();
     }
     scanForLocalVars(ctx) {
@@ -299,29 +339,30 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     }
     visitFnBlockContent(ctx, fnName) {
         console.log("Visiting FnBlockContent");
-        let currentScope = this.functionScopeMap.get(fnName);
+        let currentScope = this.getFnScope(fnName);
         console.log(currentScope);
         if (currentScope == undefined) {
             throw Error("Error getting scope from functionScopeMap");
         }
         const prevScopeList = this.scopeList;
-        this.scopeList = [currentScope];
+        this.scopeList = [];
+        for (let scope of prevScopeList) {
+            //We need to do this to keep track of the number of scopes
+            this.scopeList.push(new Map());
+        }
+        this.scopeList.push(currentScope);
+        this.functionTables.push(new Map());
+        console.log(this.functionTables);
         console.log(`Current Scope length: ${this.scopeList.length}`);
         const stmts = ctx.stmt();
         // Find the number of local variables
         const [_, names] = this.scanForLocalVars(ctx);
         // const numLocals = names.length;
-        // Track if we've seen a return statement
-        let hasReturn = false;
         for (let stmt of stmts) {
             if (!stmt)
                 continue;
             try {
                 console.log(`Statement: ${stmt.getText()}`);
-                // Check if this is a return statement
-                if (stmt.returnStmt()) {
-                    hasReturn = true;
-                }
                 this.visitStmt(stmt);
             }
             catch (error) {
@@ -330,6 +371,7 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         }
         this.scopeList = prevScopeList;
         this.scopeList.push(currentScope);
+        this.functionTables.pop();
     }
     visitExprStmt(ctx) {
         console.log("Visiting ExprStmt");
@@ -466,20 +508,20 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
             throw new Error("Function declaration requires a name");
         const fnName = identifier.getText();
         // Store function location in table
-        this.functionTable.set(fnName, this.wc + 1); // +1 to skip the jump instruction
+        let currFnTable = this.functionTables[this.functionTables.length - 1];
+        const paramScope = new Map();
         const [paramTypes, paramNames] = this.processParamList(ctx.paramList());
         console.log(`Params: ${paramNames}`);
-        const paramScope = new Map();
         for (let i = 0; i < paramNames.length; i++) {
             if (paramScope.has(paramNames[i])) {
                 throw Error("Parameter name has already been declared");
             }
             paramScope.set(paramNames[i], i);
         }
-        //Need to store the scope map seperately from the scopes because the function has not been visited yet
-        this.functionScopeMap.set(fnName, paramScope);
+        currFnTable.set(fnName, { second: this.wc + 1, first: paramScope }); // +1 to skip the jump instruction
         const gotoInstr = (0, RustLiteCompiler_1.jump)(0);
         this.instrs[this.wc++] = gotoInstr;
+        console.log(`WC before visiting in ${fnName}: ${this.wc}`);
         // Visit the function body
         const blockCtx = ctx.block();
         if (!blockCtx)
@@ -495,22 +537,23 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
         }
         // Exit scope is needed but should come after the RESET in the VM execution
         this.instrs[this.wc++] = (0, RustLiteCompiler_1.exitScope)();
+        console.log(`WC after visiting statements in ${fnName}: ${this.wc}`);
         gotoInstr.addr = this.wc;
         // Restore outer scope when exiting
         let functionScope = this.scopeList.pop();
         if (functionScope == undefined) {
             throw Error("Error while trying to retrieve function scope");
         }
-        this.functionScopeMap.set(fnName, functionScope);
+        this.setFunctionScope(fnName, functionScope);
     }
     visitFnCall(ctx) {
         console.log(`Visiting FnCall: ${ctx.getText()}`);
         const fnName = ctx.IDENTIFIER().getText();
-        const fnAddr = this.functionTable.get(fnName);
+        console.log(this.functionTables);
+        const { addr: fnAddr, scope: fnScope } = this.findFunction(fnName);
         if (!fnAddr) {
             throw new Error(`Undefined function: ${fnName}`);
         }
-        const fnScope = this.functionScopeMap.get(fnName);
         if (!fnScope) {
             throw new Error("Undefined function scope");
         }

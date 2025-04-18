@@ -160,3 +160,10 @@ export interface SET_VECTOR extends instruction {
 export interface GET_VECTOR extends instruction {
   type: instruction_type.GET_VECTOR;
 }
+
+export interface Tuple<X, Y> {
+  first: X;
+  second: Y;
+}
+
+export interface Scope extends Map<string, number> {}
