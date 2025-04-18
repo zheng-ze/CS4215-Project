@@ -25,13 +25,7 @@ SEMICOLON: ';';
 
 INT: [0-9]+;
 BOOL: 'true' | 'false';
-U8_TYPE: 'u8';
-U16_TYPE: 'u16';
-U32_TYPE: 'u32';
 U64_TYPE: 'u64';
-I8_TYPE: 'i8';
-I16_TYPE: 'i16';
-I32_TYPE: 'i32';
 I64_TYPE: 'i64';
 BOOL_TYPE: 'bool';
 STRING: '"' (~["\r\n] | '\\"')* '"';
@@ -44,9 +38,7 @@ ERROR_CHAR: . -> channel(HIDDEN);
 WS: [ \t\r\n]+ -> skip;
 COMMENT: '//' ~[\r\n]* -> skip;
 
-type: U8_TYPE | U16_TYPE | U32_TYPE | U64_TYPE 
-    | I8_TYPE | I16_TYPE | I32_TYPE | I64_TYPE 
-    | BOOL_TYPE | vectorType;
+type: U64_TYPE | I64_TYPE | BOOL_TYPE | vectorType;
 
 expr: '(' inner=expr ')'
     | IDENTIFIER
