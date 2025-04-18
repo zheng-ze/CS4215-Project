@@ -6,6 +6,33 @@ export const size_offset = 5;
 export const type_offset = 8;
 export const max_words = 2048;
 
+// u64 | i64 type is for integers that are positive and within the range of i64 only to be used in type inference
+export type PrimitiveType = "u64" | "i64" | "bool" | "u64 | i64";
+export type VoidType = "void";
+
+export type RustLiteType =
+  | PrimitiveType
+  | { kind: "vec"; elementType: PrimitiveType | undefined }
+  | {
+      kind: "function";
+      returnType: RustLiteType | VoidType;
+      paramTypes: RustLiteType[];
+    };
+
+// Each function will have its own array of frames
+export type RustLiteTypeEnv = Map<string, RustLiteTypeFrame>;
+export type RustLiteTypeFrame = {
+  // because fn names can be reused in different scopes
+  // we need to create a unique name if the function name is already in use
+  // so that we can still access the frames as needed
+  fnNameMappings: Map<string, string>;
+  mappings: Map<string, RustLiteType>;
+  parent: RustLiteTypeFrame | null;
+  children: RustLiteTypeFrame[];
+};
+
+export const global_scope = "*global*"; // * is used as it is not a valid identifier
+
 export interface AddressType {
   type: "address";
   value: number;

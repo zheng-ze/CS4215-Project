@@ -7,6 +7,7 @@ const RustLiteTypes_1 = require("./RustLiteTypes");
 const RustLiteCompiler_1 = require("./RustLiteCompiler");
 const runner_1 = require("conductor/dist/conductor/runner");
 const RustLiteLexer_1 = require("./parser/src/RustLiteLexer");
+const RustLiteTypeChecker_1 = require("./RustLiteTypeChecker");
 const RustLiteVirtualMachine_1 = require("./RustLiteVirtualMachine");
 class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     constructor() {
@@ -441,17 +442,10 @@ class RustLiteEvaluatorVisitor extends antlr4ng_1.AbstractParseTreeVisitor {
     }
     processReturnType(ctx) {
         console.log("Visiting ReturnType");
-        if (!ctx || !ctx.returnTypes())
+        const type = ctx.type();
+        if (!ctx || !type)
             return "void";
-        return this.processReturnTypes(ctx.returnTypes());
-    }
-    processReturnTypes(ctx) {
-        console.log("Visiting ReturnTypes");
-        const typeCtx = ctx.type();
-        if (!ctx || !typeCtx)
-            return "void";
-        const type = typeCtx.getText();
-        return type;
+        return type.getText();
     }
     visitReturnStmt(ctx) {
         console.log("Visiting ReturnStmt");
@@ -608,6 +602,7 @@ class RustLiteEvaluator extends runner_1.BasicEvaluator {
     constructor(conductor) {
         super(conductor);
         this.executionCount = 0;
+        this.typeChecker = new RustLiteTypeChecker_1.RustLiteTypeChecker();
         this.visitor = new RustLiteEvaluatorVisitor();
     }
     async evaluateChunk(chunk) {
@@ -627,17 +622,10 @@ class RustLiteEvaluator extends runner_1.BasicEvaluator {
                 reportAttemptingFullContext() { },
                 reportContextSensitivity() { },
             });
-            lexer.removeErrorListeners();
-            lexer.addErrorListener({
-                syntaxError: (recognizer, offendingSymbol, line, charPositionInLine, msg) => {
-                    this.conductor.sendOutput(`Lexer error at ${line}:${charPositionInLine} - ${msg}`);
-                },
-                reportAmbiguity() { },
-                reportAttemptingFullContext() { },
-                reportContextSensitivity() { },
-            });
             // Parse the input
             const tree = parser.prog();
+            // Type check the parsed tree
+            const type_env = this.typeChecker.typeCheck(tree);
             // Evaluate the parsed tree
             this.visitor.visit(tree);
             const instructions = this.visitor.getCompiledInstructions();
@@ -645,20 +633,30 @@ class RustLiteEvaluator extends runner_1.BasicEvaluator {
             instructions.forEach((instruction, index) => {
                 console.log(`${index}:`, instruction);
             });
-            // Create and run VM with instructions
-            const vm = new RustLiteVirtualMachine_1.RustLiteVirtualMachine([...instructions]);
-            console.log("=== Runnning Instructions in VM ===");
-            const result = vm.run();
+            try {
+                // Create and run VM with instructions
+                const vm = new RustLiteVirtualMachine_1.RustLiteVirtualMachine([...instructions]);
+                console.log("=== Runnning Instructions in VM ===");
+                const result = vm.run();
+                this.conductor.sendOutput(`Execution result: ${result}`);
+            }
+            catch (error) {
+                if (error instanceof Error) {
+                    this.conductor.sendOutput(`Runtime Error: ${error.message}`);
+                }
+                else {
+                    this.conductor.sendOutput(`Runtime Error: ${String(error)}`);
+                }
+            }
             // Send both instructions and execution result to the REPL
-            this.conductor.sendOutput(`Execution result: ${result}`);
         }
         catch (error) {
             // Handle errors and send them to the REPL
             if (error instanceof Error) {
-                this.conductor.sendOutput(`Error: ${error.message}`);
+                this.conductor.sendOutput(`Compile Error: ${error.message}`);
             }
             else {
-                this.conductor.sendOutput(`Error: ${String(error)}`);
+                this.conductor.sendOutput(`Compile Error: ${String(error)}`);
             }
         }
     }

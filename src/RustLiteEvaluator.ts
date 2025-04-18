@@ -24,10 +24,8 @@ import {
   ProgContext,
   ReturnStmtContext,
   ReturnTypeContext,
-  ReturnTypesContext,
   RustLiteParser,
   StmtContext,
-  TypeContext,
   VectorExprContext,
   VectorIndexAccessContext,
   VectorInitContext,
@@ -35,12 +33,16 @@ import {
   VectorTypeContext,
   WhileStmtContext,
 } from "./parser/src/RustLiteParser";
-import { GOTO, instruction, instruction_type } from "./RustLiteTypes";
+import {
+  GOTO,
+  RustLiteTypeEnv,
+  instruction,
+  instruction_type,
+} from "./RustLiteTypes";
 import {
   allocate_vector,
   assign,
   binaryOperation,
-  call,
   done,
   enterScope,
   exitScope,
@@ -50,7 +52,6 @@ import {
   load,
   loadConstant,
   loadFunction,
-  pop,
   reset,
   set_vector,
   unaryOperation,
@@ -59,6 +60,7 @@ import {
 import { BasicEvaluator } from "conductor/dist/conductor/runner";
 import { IRunnerPlugin } from "conductor/dist/conductor/runner/types";
 import { RustLiteLexer } from "./parser/src/RustLiteLexer";
+import { RustLiteTypeChecker } from "./RustLiteTypeChecker";
 import { RustLiteVirtualMachine } from "./RustLiteVirtualMachine";
 import { RustLiteVisitor } from "./parser/src/RustLiteVisitor";
 
@@ -536,16 +538,10 @@ class RustLiteEvaluatorVisitor
 
   private processReturnType(ctx: ReturnTypeContext): string {
     console.log("Visiting ReturnType");
-    if (!ctx || !ctx.returnTypes()) return "void";
-    return this.processReturnTypes(ctx.returnTypes());
-  }
+    const type = ctx.type();
+    if (!ctx || !type) return "void";
 
-  private processReturnTypes(ctx: ReturnTypesContext): string {
-    console.log("Visiting ReturnTypes");
-    const typeCtx = ctx.type();
-    if (!ctx || !typeCtx) return "void";
-    const type = typeCtx.getText();
-    return type;
+    return type.getText();
   }
 
   visitReturnStmt(ctx: ReturnStmtContext): void {
@@ -723,11 +719,13 @@ class RustLiteEvaluatorVisitor
 
 export class RustLiteEvaluator extends BasicEvaluator {
   private executionCount: number;
+  private typeChecker: RustLiteTypeChecker;
   private visitor: RustLiteEvaluatorVisitor;
 
   constructor(conductor: IRunnerPlugin) {
     super(conductor);
     this.executionCount = 0;
+    this.typeChecker = new RustLiteTypeChecker();
     this.visitor = new RustLiteEvaluatorVisitor();
   }
 
@@ -756,25 +754,11 @@ export class RustLiteEvaluator extends BasicEvaluator {
         reportAttemptingFullContext() {},
         reportContextSensitivity() {},
       });
-      lexer.removeErrorListeners();
-      lexer.addErrorListener({
-        syntaxError: (
-          recognizer,
-          offendingSymbol,
-          line,
-          charPositionInLine,
-          msg
-        ) => {
-          this.conductor.sendOutput(
-            `Lexer error at ${line}:${charPositionInLine} - ${msg}`
-          );
-        },
-        reportAmbiguity() {},
-        reportAttemptingFullContext() {},
-        reportContextSensitivity() {},
-      });
       // Parse the input
       const tree = parser.prog();
+
+      // Type check the parsed tree
+      const type_env: RustLiteTypeEnv = this.typeChecker.typeCheck(tree);
 
       // Evaluate the parsed tree
       this.visitor.visit(tree);

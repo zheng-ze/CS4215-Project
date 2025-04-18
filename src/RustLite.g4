@@ -41,9 +41,9 @@ COMMENT: '//' ~[\r\n]* -> skip;
 type: U64_TYPE | I64_TYPE | BOOL_TYPE | vectorType;
 
 expr: '(' inner=expr ')'
-    | IDENTIFIER
-    | INT
-    | BOOL
+    | primary=IDENTIFIER
+    | primary=INT
+    | primary=BOOL
     | arithExpr
     | logicExpr
     | fnCall
@@ -91,7 +91,6 @@ blockContent: stmt* (finalExpr=expr)?
 exprStmt: expr SEMICOLON;
 
 declareStmt: LET IDENTIFIER COLON type EQUALS expr SEMICOLON
-        | LET IDENTIFIER COLON type SEMICOLON
         | LET IDENTIFIER EQUALS expr SEMICOLON
         | LET IDENTIFIER {
                 this.notifyErrorListeners("Type annotations needed", null, null);
@@ -117,9 +116,7 @@ param: IDENTIFIER COLON type
     | IDENTIFIER {this.notifyErrorListeners("Parameters must specify a type", null, null);};
 paramList: param (',' param)* ','?;
 
-returnTypes: type
-            | '()';
-returnType: '->' returnTypes;
+returnType: '->' (type | '()');
 returnStmt: RETURN expr? SEMICOLON;
 
 fnDeclareStmt: FN IDENTIFIER ('(' paramList? ')' | '()')  returnType? block;

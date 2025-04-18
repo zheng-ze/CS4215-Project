@@ -1,11 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TypeTag = exports.HeapTag = exports.instruction_type = exports.max_words = exports.type_offset = exports.size_offset = exports.node_size = exports.word_size = void 0;
+exports.TypeTag = exports.HeapTag = exports.instruction_type = exports.global_scope = exports.max_words = exports.type_offset = exports.size_offset = exports.node_size = exports.word_size = void 0;
 exports.word_size = 9; // 8 for data, 1 for type
 exports.node_size = 4;
 exports.size_offset = 5;
 exports.type_offset = 8;
 exports.max_words = 2048;
+exports.global_scope = "*global*"; // * is used as it is not a valid identifier
 var instruction_type;
 (function (instruction_type) {
     instruction_type[instruction_type["LDC"] = 0] = "LDC";
