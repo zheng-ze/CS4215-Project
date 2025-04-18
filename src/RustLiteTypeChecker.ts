@@ -215,6 +215,14 @@ export class RustLiteTypeChecker {
     if (primary) return this.getTypeOfToken(primary);
     const inner = ctx._inner;
     if (inner) return this.getTypeOfArithExpr(inner);
+    const fnCall = ctx.fnCall();
+    if (fnCall) {
+      const returnType = this.getTypeOfFnCall(fnCall);
+      if (returnType === "void")
+        throw new Error("Cannot use void in arithmetic expression");
+      return returnType;
+    }
+
     const left = ctx._left;
     const right = ctx._right;
     const op = ctx._op;
@@ -369,7 +377,9 @@ export class RustLiteTypeChecker {
           const currentType = this.getTypeOfExpr(expressions[i]);
           if (currentType !== firstType) {
             throw new Error(
-              `Mismatched types: expected ${firstType} but got ${currentType}`
+              `Mismatched types: expected ${JSON.stringify(
+                firstType
+              )} but got ${JSON.stringify(currentType)}`
             );
           }
         }
@@ -422,7 +432,9 @@ export class RustLiteTypeChecker {
           )
         )
           throw new Error(
-            `Mismatched types: expected ${paramType} but got ${argType}`
+            `Mismatched types: expected ${JSON.stringify(
+              paramType
+            )} but got ${JSON.stringify(argType)}`
           );
       }
     }
