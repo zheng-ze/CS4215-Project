@@ -1,12 +1,21 @@
 fn main() {
+  let c: u8 = 3;
   let x: u8 = 5;
   let y: u8 = 10;
-  fn sum(a: u8, b: u8) -> u8{
-    fn other_sum(x: u8, y: u8) -> u8 {
-        return x + y;
-    }
-    return other_sum(a, b);
+  fn get1() -> u8{
+    return 1;
   }
-  let z = other_sum(x, y);
+  fn sum(a: u8, b: u8) -> u8 {
+    fn other_sum(x: u8, y: u8) -> u8 {
+        fn get1() -> u8{
+            return 2;
+        }
+        let a = get1();
+        return a + x + y;
+    }
+    let x = get1();
+    return get1() + other_sum(a, b);
+  }
+  let z = get1() + sum(x, y);
   return z;
 }

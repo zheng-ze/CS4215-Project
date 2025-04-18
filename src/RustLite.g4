@@ -59,6 +59,7 @@ expr: '(' inner=expr ')'
 
 arithExpr: primary=INT
         | primary=IDENTIFIER
+        | fnCall
         | '(' inner=arithExpr ')'
         | op='-' right=arithExpr
         | left=arithExpr op=('*'|'/'|'%') right=arithExpr
@@ -91,9 +92,7 @@ stmt: exprStmt
 // expr for implicit return in fn block. Need to check when compiling to bytecode
 block: '{' blockContent '}';
 
-blockContent: stmt* (finalExpr=expr)?
-        | stmt*
-        | stmt* expr (stmt|expr)* finalExpr=expr? {this.notifyErrorListeners("Missing semicolon after expression", null, null)};
+blockContent: stmt* (finalExpr=expr)?;
 
 
 exprStmt: expr SEMICOLON;

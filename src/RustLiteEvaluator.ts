@@ -163,12 +163,11 @@ class RustLiteEvaluatorVisitor
 
   findFunction(name: string): { scope: Scope; addr: number } {
     console.log(`Finding Function :${name}`);
-    console.log(this, this.functionTables);
     for (let i = this.functionTables.length - 1; i >= 0; i--) {
       const currFnTable = this.functionTables[i];
       let tple = currFnTable.get(name);
       if (tple === undefined) {
-        continue;
+        console.log(`Unable to find function :${name} in current scope`);
       } else {
         console.log(
           `Found Function: ${name}, Scope: ${tple.first}, Address: ${tple.second}`
@@ -220,6 +219,7 @@ class RustLiteEvaluatorVisitor
 
     const int = ctx.INT();
     const identifier = ctx.IDENTIFIER();
+    const fnCall = ctx.fnCall();
     const innerCtx = ctx._inner;
 
     const opText = ctx._op?.text;
@@ -230,6 +230,10 @@ class RustLiteEvaluatorVisitor
       console.log(`Loading Constant: ${parseInt(int.getText())}`);
       this.instrs[this.wc++] = loadConstant(parseInt(int.getText()));
       return;
+    }
+
+    if (fnCall) {
+      this.visitFnCall(fnCall);
     }
 
     if (identifier) {
@@ -449,19 +453,10 @@ class RustLiteEvaluatorVisitor
     const [_, names] = this.scanForLocalVars(ctx);
     // const numLocals = names.length;
 
-    // Track if we've seen a return statement
-    let hasReturn = false;
-
     for (let stmt of stmts) {
       if (!stmt) continue;
       try {
         console.log(`Statement: ${stmt.getText()}`);
-
-        // Check if this is a return statement
-        if (stmt.returnStmt()) {
-          hasReturn = true;
-        }
-
         this.visitStmt(stmt);
       } catch (error) {
         throw `Error while visiting statement ${stmt.getText()}, with error: ${error}`;
@@ -637,7 +632,7 @@ class RustLiteEvaluatorVisitor
 
     const gotoInstr: GOTO = jump(0);
     this.instrs[this.wc++] = gotoInstr;
-
+    console.log(`WC before visiting in ${fnName}: ${this.wc}`);
     // Visit the function body
     const blockCtx = ctx.block();
     if (!blockCtx) throw new Error("Invalid function declaration");
@@ -654,6 +649,7 @@ class RustLiteEvaluatorVisitor
 
     // Exit scope is needed but should come after the RESET in the VM execution
     this.instrs[this.wc++] = exitScope();
+    console.log(`WC after visiting statements in ${fnName}: ${this.wc}`);
 
     gotoInstr.addr = this.wc;
 
