@@ -219,7 +219,7 @@ class RustLiteEvaluatorVisitor
 
     const int = ctx.INT();
     const identifier = ctx.IDENTIFIER();
-    const fnCall = ctx.fnCall();
+    const fnCallCtx = ctx.fnCall();
     const innerCtx = ctx._inner;
 
     const opText = ctx._op?.text;
@@ -232,8 +232,8 @@ class RustLiteEvaluatorVisitor
       return;
     }
 
-    if (fnCall) {
-      this.visitFnCall(fnCall);
+    if (fnCallCtx) {
+      this.visitFnCall(fnCallCtx);
     }
 
     if (identifier) {
@@ -271,6 +271,7 @@ class RustLiteEvaluatorVisitor
 
     const bool = ctx.BOOL();
     const identifier = ctx.IDENTIFIER();
+    const fnCallCtx = ctx.fnCall();
     const innerCtx = ctx._inner;
     const arithLeftCtx = ctx._arithLeft;
     const arithRightCtx = ctx._arithRight;
@@ -281,6 +282,10 @@ class RustLiteEvaluatorVisitor
     if (bool) {
       this.instrs[this.wc++] = loadConstant(bool.getText() === "true");
       return;
+    }
+
+    if (fnCallCtx) {
+      this.visitFnCall(fnCallCtx);
     }
 
     if (identifier) {

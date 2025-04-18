@@ -71,6 +71,7 @@ arithExpr: primary=INT
 
 logicExpr: primary=BOOL
         | primary=IDENTIFIER
+        | fnCall
         | '(' inner=logicExpr ')'
         | arithLeft=arithExpr op=('>'|'<'|'=='|'!='|'<='|'>=') arithRight=arithExpr
         | op='!' right=logicExpr
