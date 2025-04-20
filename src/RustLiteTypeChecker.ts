@@ -8,6 +8,7 @@ import {
   FnDeclareStmtContext,
   LogicExprContext,
   ParamListContext,
+  PrintlnMacroContext,
   ProgContext,
   ReturnStmtContext,
   ReturnTypeContext,
@@ -388,7 +389,7 @@ export class RustLiteTypeChecker {
         return { kind: "vec", elementType: firstType };
       }
     }
-    if (vectorLength) return "u64";
+    if (vectorLength) return "u64 | i64";
     if (vectorIndex) {
       const vectorName = vectorIndex.IDENTIFIER().getText();
       const vectorType = this.getTypeOfIdentifier(vectorName);
@@ -522,8 +523,11 @@ export class RustLiteTypeChecker {
     const blockCtx = ctx.block();
     const whileStmtCtx = ctx.whileStmt();
     const returnStmtCtx = ctx.returnStmt();
+
+    // No return type but called to perform type checking
     const declareStmtCtx = ctx.declareStmt();
     const fnDeclareStmtCtx = ctx.fnDeclareStmt();
+    const printLn = ctx.printlnMacro();
 
     // Recursively check for types on stmts that can potentially return
     if (declareStmtCtx) {
@@ -552,6 +556,10 @@ export class RustLiteTypeChecker {
       return this.wrapWithFrameAndEvaluate(
         this.getBodyReturnType.bind(this, blockCtx)
       );
+    if (printLn) {
+      this.visitPrintLnMacro(printLn);
+      return "void";
+    }
 
     return "void";
   }
@@ -597,6 +605,86 @@ export class RustLiteTypeChecker {
     if (!expr) return "void";
 
     return this.getTypeOfExpr(expr);
+  }
+
+  private visitPrintLnMacro(ctx: PrintlnMacroContext): void {
+    console.log("Visiting println macro");
+    const printlnArgs = ctx.printlnArgs();
+    if (!printlnArgs) return; // Print empty line
+    const stringCtx = printlnArgs.STRING();
+    const argsCtx = printlnArgs.expr();
+
+    if (!stringCtx && argsCtx.length > 0) {
+      throw new Error("Expected string found ,");
+    }
+
+    const string = stringCtx?.getText() ?? "";
+    const args = argsCtx ?? [];
+
+    let numValidArgs = 0;
+    for (const arg of args) {
+      if (!arg) continue;
+      numValidArgs++;
+    }
+
+    // Check if the string is valid
+    this.checkStringFormat(string, numValidArgs);
+
+    // Check if type of args is valid
+    for (const arg of args) {
+      const argType = this.getTypeOfExpr(arg);
+      if (argType === "void" || typeof argType === "object") {
+        throw new Error(
+          `\`${JSON.stringify(
+            argType
+          )}\` doesn't implement \`std::fmt::Display\``
+        );
+      }
+    }
+  }
+
+  private checkStringFormat(string: string, numArgs: number): void {
+    console.log("Checking string format");
+    console.log("String:", string);
+    console.log("Number of arguments:", numArgs);
+    let str = string;
+    let argsIndex = 0;
+    const LEFT_BRACE_MARKER = "\uE000"; // Private use Unicode character
+    const RIGHT_BRACE_MARKER = "\uE001"; // Private use Unicode character
+
+    // Replace escaped braces
+    str = str.replace(/\{\{/g, LEFT_BRACE_MARKER);
+    str = str.replace(/\}\}/g, RIGHT_BRACE_MARKER);
+
+    // Replace {} with args
+    let missingArgs = 0;
+    str = str.replace(/\{}/g, () => {
+      if (argsIndex >= numArgs) {
+        missingArgs++;
+        return "";
+      }
+      argsIndex++;
+      return "";
+    });
+
+    if (str.includes("{")) {
+      throw new Error(`Unmatched '{' in format string: ${string}`);
+    }
+
+    if (str.includes("}")) {
+      throw new Error(`Unmatched '}' in format string: ${string}`);
+    }
+
+    // Check if there is sufficient arguments and placeholders
+    if (argsIndex < numArgs) {
+      throw new Error(`Formatting specifier missing`);
+    }
+
+    if (missingArgs > 0) {
+      throw new Error(
+        `${missingArgs} positional argument in format string, but no arguments were given`
+      );
+    }
   }
 
   // Helper methods
