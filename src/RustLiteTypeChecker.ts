@@ -178,7 +178,7 @@ export class RustLiteTypeChecker {
     const body = ctx.block();
     const bodyReturnType = this.getBodyReturnType(body);
 
-    if (bodyReturnType !== returnType) {
+    if (JSON.stringify(bodyReturnType) !== JSON.stringify(returnType)) {
       throw new Error(
         `Return type mismatch: expected ${returnType}, got ${bodyReturnType}`
       );
@@ -457,7 +457,13 @@ export class RustLiteTypeChecker {
       if (!typeCtx) {
         throw new Error("Parameter type is required");
       }
-      const type = this.getTypeOfToken(typeCtx.start);
+      const vectorType = typeCtx.vectorType();
+      let type: RustLiteType;
+      if (vectorType !== null) {
+        type = this.getTypeOfType(typeCtx);
+      } else {
+        type = this.getTypeOfToken(typeCtx.start);
+      }
       const name = param.IDENTIFIER().getText();
       paramTypes.push([name, type]);
     }
@@ -473,7 +479,10 @@ export class RustLiteTypeChecker {
 
     const type = ctx.type();
     if (type) {
-      type.start;
+      const vectorType = type.vectorType();
+      if (vectorType) {
+        return this.getTypeOfType(type);
+      }
       const token = type.start;
       const tokenType = this.getTypeOfToken(token);
       return tokenType;
