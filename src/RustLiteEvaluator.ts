@@ -30,7 +30,6 @@ import {
   VectorIndexAccessContext,
   VectorInitContext,
   VectorLenContext,
-  VectorTypeContext,
   WhileStmtContext,
 } from "./parser/src/RustLiteParser";
 import {
@@ -67,7 +66,6 @@ import { RustLiteLexer } from "./parser/src/RustLiteLexer";
 import { RustLiteTypeChecker } from "./RustLiteTypeChecker";
 import { RustLiteVirtualMachine } from "./RustLiteVirtualMachine";
 import { RustLiteVisitor } from "./parser/src/RustLiteVisitor";
-import { exit } from "process";
 
 class RustLiteEvaluatorVisitor
   extends AbstractParseTreeVisitor<void>
@@ -828,10 +826,9 @@ export class RustLiteEvaluator extends BasicEvaluator {
           charPositionInLine,
           msg
         ) => {
-          this.conductor.sendOutput(
+          throw new Error(
             `Syntax error at ${line}:${charPositionInLine} - ${msg}`
           );
-          exit(1);
         },
         reportAmbiguity() {},
         reportAttemptingFullContext() {},
