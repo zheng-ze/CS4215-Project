@@ -54,9 +54,11 @@ import {
   load,
   loadConstant,
   loadFunction,
+  println,
   reset,
   set_vector,
   unaryOperation,
+  vector_length,
 } from "./RustLiteCompiler";
 
 import { BasicEvaluator } from "conductor/dist/conductor/runner";
@@ -332,6 +334,7 @@ class RustLiteEvaluatorVisitor
     const fnDeclareStmtCtx = ctx.fnDeclareStmt();
     const returnStmtCtx = ctx.returnStmt();
     const blockCtx = ctx.block();
+    const printlnMacroCtx = ctx.printlnMacro();
 
     if (exprStmtCtx) return this.visitExprStmt(exprStmtCtx);
     if (declareStmtCtx) return this.visitDeclareStmt(declareStmtCtx);
@@ -340,6 +343,7 @@ class RustLiteEvaluatorVisitor
     if (fnDeclareStmtCtx) return this.visitFnDeclareStmt(fnDeclareStmtCtx);
     if (returnStmtCtx) return this.visitReturnStmt(returnStmtCtx);
     if (blockCtx) return this.visitBlock(blockCtx);
+    if (printlnMacroCtx) return this.visitPrintlnMacro(printlnMacroCtx);
   }
 
   visitBlock(ctx: BlockContext): void {
@@ -718,11 +722,6 @@ class RustLiteEvaluatorVisitor
     // Do not pop reference from stack so that it can be assigned
   }
 
-  visitVectorType(ctx: VectorTypeContext): void {
-    console.log("Visiting Type");
-    return;
-  }
-
   visitVectorIndexAccess(ctx: VectorIndexAccessContext): void {
     console.log("Visiting VectorIndexAccess");
     const vector = ctx.IDENTIFIER();
@@ -742,17 +741,51 @@ class RustLiteEvaluatorVisitor
 
   visitVectorLen(ctx: VectorLenContext): void {
     console.log("Visiting VectorLen");
+    const vector = ctx.IDENTIFIER();
+    if (!vector) {
+      throw new Error("Cannot find the value of undefined in current scope");
+    }
+    const vectorDetails = this.findParam(vector.toString());
+    this.instrs[this.wc++] = load(
+      vectorDetails.scopeLevel,
+      vectorDetails.offset
+    ); // Load vector reference
+    this.instrs[this.wc++] = vector_length(); // Get vector length
     return;
   }
 
-  visitPrintlnArgs(ctx: PrintlnArgsContext): void {
+  visitPrintlnArgs(ctx: PrintlnArgsContext | null): void {
     console.log("Visiting PrintlnArgs");
+    const stringCtx = ctx?.STRING();
+    const argsCtx = ctx?.expr();
+
+    if (!stringCtx && argsCtx && argsCtx.length > 0) {
+      throw new Error("Expected string found ,");
+    }
+
+    const string = stringCtx?.getText() ?? "";
+    const args = argsCtx ?? [];
+
+    const stringToPrint = string;
+    console.log(`String to print: ${stringToPrint}`);
+    this.instrs[this.wc++] = loadConstant(stringToPrint);
+    // Load args in reverse order
+    let validArgCount = 0;
+    for (let i = args.length - 1; i >= 0; i--) {
+      if (!args[i]) continue;
+      this.visitExpr(args[i]);
+      validArgCount++;
+    }
+
+    this.instrs[this.wc++] = loadConstant(validArgCount); // Load number of args
+    console.log(`Number of args: ${validArgCount}`);
+    this.instrs[this.wc++] = println(); // Call println
     return;
   }
 
   visitPrintlnMacro(ctx: PrintlnMacroContext): void {
     console.log("Visiting PrintlnMacro");
-    return;
+    return this.visitPrintlnArgs(ctx.printlnArgs());
   }
 
   protected defaultResult(): void {
@@ -817,10 +850,13 @@ export class RustLiteEvaluator extends BasicEvaluator {
       });
       try {
         // Create and run VM with instructions
-        const vm = new RustLiteVirtualMachine([...instructions]);
+        const vm = new RustLiteVirtualMachine(
+          [...instructions],
+          this.conductor.sendOutput
+        );
         console.log("=== Runnning Instructions in VM ===");
         const result = vm.run();
-        this.conductor.sendOutput(`Execution result: ${result}`);
+        // this.conductor.sendOutput(`Execution result: ${result}`);
       } catch (error) {
         if (error instanceof Error) {
           this.conductor.sendOutput(`Runtime Error: ${error.message}`);

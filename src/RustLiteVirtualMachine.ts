@@ -36,13 +36,15 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
   pc: number;
 
   instrs: instruction[];
+  private printDelegate: Function;
 
-  constructor(instrs: instruction[]) {
+  constructor(instrs: instruction[], printDelegate: Function) {
     this.instrs = instrs;
     this.os = [];
     this.stack = new RustLiteStack();
     this.heap = new Heap(100);
     this.pc = 0;
+    this.printDelegate = printDelegate;
   }
 
   run(): SUPPORTED_TYPES {
@@ -102,119 +104,28 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
     [instruction_type.LDF]: this.handle_ldf_instruction.bind(this),
 
-    // [instruction_type.CALL]: (instr: instruction) => {
-    //   const call = instr as CALL;
-    //   const arity = call.arity;
-    //   // Get function info from stack (order is now reversed from LDF)
-    //   const functionArity = this.stack.pop();
-    //   const functionPC = this.stack.pop();
-
-    //   if (functionArity !== arity) {
-    //     throw new Error(
-    //       `Function expected ${functionArity} arguments but got ${arity}`
-    //     );
-    //   }
-
-    //   // Set return address to current PC
-    //   const returnAddr = this.pc;
-    //   console.log(
-    //     `Setting return address to ${returnAddr} for function call to PC=${functionPC}`
-    //   );
-
-    //   // Store arguments temporarily
-    //   const args: SUPPORTED_TYPES[] = [];
-    //   console.log("In Call fn");
-    //   for (let i = 0; i < arity; i++) {
-    //     args[i] = this.stack.pop();
-    //   }
-
-    //   console.log(args);
-
-    //   // Create a new frame for the function with enough space for all parameters
-    //   const frameSize = arity;
-    //   this.stack.pushFrame(returnAddr);
-
-    //   // Double-check that the return address is set correctly
-    //   this.stack.setReturnAddress(returnAddr);
-
-    //   // Store arguments in the new frame in the correct order
-    //   for (let i = 0; i < arity; i++) {
-    //     // The arguments are popped in reverse order from the stack
-    //     // For a call like sum(x, y), the stack will have [y, x]
-    //     // So we need to store them in the correct order in the frame
-    //     this.stack.setLocalInFrame(
-    //       this.stack.getFrameCount() - 1,
-    //       i,
-    //       args[arity - 1 - i]
-    //     );
-    //     console.log(`Setting argument ${i} to value ${args[arity - 1 - i]}`);
-    //   }
-
-    //   // Update program counter
-    //   this.pc = Number(functionPC);
-
-    //   console.log(
-    //     `CALL: Jumping to function at PC=${functionPC}, return address=${returnAddr}, frame size=${frameSize}`
-    //   );
-    // },
-
-    // [instruction_type.TAIL_CALL]: (instr: instruction) => {
-    //   const tail_call = instr as TAIL_CALL;
-    //   const arity = tail_call.arity;
-
-    //   // Get function info from stack
-    //   const functionArity = this.stack.pop();
-    //   const functionPC = this.stack.pop();
-
-    //   if (functionArity !== arity) {
-    //     throw new Error(
-    //       `Function expected ${functionArity} arguments but got ${arity}`
-    //     );
-    //   }
-
-    //   // For tail calls, we need to preserve the return address
-    //   const returnAddr = this.stack.getReturnAddress();
-    //   if (returnAddr === undefined) {
-    //     throw new Error("Cannot perform tail call without a return address");
-    //   }
-
-    //   // Store arguments temporarily
-    //   const args: SUPPORTED_TYPES[] = [];
-    //   for (let i = 0; i < arity; i++) {
-    //     args[i] = this.stack.pop();
-    //   }
-
-    //   // Pop the current frame but remember its return address
-    //   this.stack.popFrame();
-
-    //   // Create a new frame with the same return address
-    //   const frameSize = Math.max(arity, 1);
-    //   this.stack.pushFrame(returnAddr);
-
-    //   // Store arguments in the new frame
-    //   for (let i = 0; i < arity; i++) {
-    //     this.stack.setLocal(i, args[arity - 1 - i]);
-    //   }
-
-    //   // Update PC
-    //   this.pc = Number(functionPC);
-
-    //   console.log(
-    //     `TAIL_CALL: Jumping to function at PC=${functionPC}, preserving return address=${returnAddr}`
-    //   );
-    // },
-
     [instruction_type.RESET]: this.handle_reset_instr.bind(this),
 
     [instruction_type.ALLOC_VECTOR]: this.handle_alloc_vector.bind(this),
+
     [instruction_type.SET_VECTOR]: this.handle_set_vector.bind(this),
+
     [instruction_type.GET_VECTOR]: this.handle_get_vector.bind(this),
+
+    [instruction_type.VECTOR_LENGTH]: this.handle_vector_length.bind(this),
+
+    [instruction_type.PRINT_LINE]: this.handle_print_line.bind(this),
   };
 
   //Load Constant, for example when we are just calling a primitive value like 1;
   private handle_ldc_instruction(instr: instruction) {
     const ldc = instr as LDC;
-    if (typeof ldc.val === "number" || typeof ldc.val === "boolean") {
+    const val = ldc.val;
+    if (
+      typeof val === "number" ||
+      typeof val === "boolean" ||
+      typeof val === "string"
+    ) {
       // Store primitives directly on the stack
       this.os.push(ldc.val);
     } else {
@@ -456,5 +367,87 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       `GET_VECTOR: Retrieved value ${value} from address ${vectorAddr}, index ${index}`
     );
     this.os.push(value);
+  }
+  private handle_vector_length(instr: instruction) {
+    const vectorAddr = this.os.pop();
+    if (typeof vectorAddr !== "object" || vectorAddr.type !== "address") {
+      throw new Error(`Invalid vector address: ${JSON.stringify(vectorAddr)}`);
+    }
+    const length = this.heap.get_vector_size(vectorAddr.value);
+    this.os.push(length);
+  }
+  private handle_print_line(instr: instruction) {
+    const numArgs = this.os.pop();
+    console.log("Num args", numArgs);
+    if (typeof numArgs !== "number") {
+      throw new Error("PRINT_LINE: Number of arguments must be a number");
+    }
+    const args: SUPPORTED_TYPES[] = [];
+    for (let i = 0; i < numArgs; i++) {
+      const arg = this.os.pop();
+      if (arg == undefined) {
+        throw new Error("PRINT_LINE: Arg not found in stack");
+      }
+      args.push(arg);
+    }
+    console.log("Args", JSON.stringify(args));
+    const formatString = this.os.pop();
+    console.log("Format string", formatString);
+    if (typeof formatString !== "string") {
+      throw new Error(
+        "PRINT_LINE: Format string must be a string, got: " +
+          typeof formatString
+      );
+    }
+    this.println(formatString, ...args);
+  }
+
+  private println(s: string, ...args: SUPPORTED_TYPES[]) {
+    // Replace all {} with args
+    let str = s;
+    let argsIndex = 0;
+    const LEFT_BRACE_MARKER = "\uE000"; // Private use Unicode character
+    const RIGHT_BRACE_MARKER = "\uE001"; // Private use Unicode character
+
+    // Replace escaped braces
+    str = str.replace(/\{\{/g, LEFT_BRACE_MARKER);
+    str = str.replace(/\}\}/g, RIGHT_BRACE_MARKER);
+
+    // Replace {} with args
+    let missingArgs = 0;
+    str = str.replace(/\{}/g, (match) => {
+      if (argsIndex >= args.length) {
+        missingArgs++;
+        return ""; // No replacement will throw an error later
+      }
+      const arg = args[argsIndex++];
+      return arg !== undefined ? arg.toString() : "undefined";
+    });
+
+    if (str.includes("{")) {
+      throw new Error(`Unmatched '{' in format string: ${s}`);
+    }
+
+    if (str.includes("}")) {
+      throw new Error(`Unmatched '}' in format string: ${s}`);
+    }
+
+    // Check if there is sufficient arguments and placeholders
+    if (argsIndex < args.length) {
+      throw new Error(`Formatting specifier missing`);
+    }
+
+    if (missingArgs > 0) {
+      throw new Error(
+        `${missingArgs} positional argument in format string, but no arguments were given`
+      );
+    }
+
+    // Replace escaped braces
+    str = str.replace(new RegExp(LEFT_BRACE_MARKER, "g"), "{");
+    str = str.replace(new RegExp(RIGHT_BRACE_MARKER, "g"), "}");
+
+    // Print the formatted string
+    this.printDelegate(str);
   }
 }

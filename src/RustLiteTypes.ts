@@ -1,4 +1,4 @@
-export type SUPPORTED_TYPES = number | boolean | AddressType;
+export type SUPPORTED_TYPES = number | boolean | AddressType | string;
 
 export const word_size = 9; // 8 for data, 1 for type
 export const node_size = 4;
@@ -57,6 +57,8 @@ export enum instruction_type {
   ALLOC_VECTOR, // 15
   SET_VECTOR, // 16
   GET_VECTOR, // 17
+  VECTOR_LENGTH, // 18
+  PRINT_LINE, // 19
 }
 
 export enum HeapTag {
@@ -159,6 +161,14 @@ export interface SET_VECTOR extends instruction {
 
 export interface GET_VECTOR extends instruction {
   type: instruction_type.GET_VECTOR;
+}
+
+export interface VECTOR_LENGTH extends instruction {
+  type: instruction_type.VECTOR_LENGTH;
+}
+
+export interface PRINT_LINE extends instruction {
+  type: instruction_type.PRINT_LINE;
 }
 
 export interface Tuple<X, Y> {

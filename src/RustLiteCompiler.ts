@@ -13,11 +13,13 @@ import {
   LDC,
   LDF,
   POP,
+  PRINT_LINE,
   RESET,
   SET_VECTOR,
   SUPPORTED_TYPES,
   TAIL_CALL,
   UNOP,
+  VECTOR_LENGTH,
   instruction_type,
 } from "./RustLiteTypes";
 
@@ -137,5 +139,17 @@ export function set_vector(): SET_VECTOR {
 export function get_vector(): GET_VECTOR {
   return {
     type: instruction_type.GET_VECTOR,
+  };
+}
+
+export function vector_length(): VECTOR_LENGTH {
+  return {
+    type: instruction_type.VECTOR_LENGTH,
+  };
+}
+
+export function println(): PRINT_LINE {
+  return {
+    type: instruction_type.PRINT_LINE,
   };
 }

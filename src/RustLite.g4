@@ -80,7 +80,8 @@ stmt: exprStmt
     | loopControlStmt
     | fnDeclareStmt
     | returnStmt
-    | block;
+    | block
+    | printlnMacro;
 
 // expr for implicit return in fn block. Need to check when compiling to bytecode
 block: '{' blockContent '}';
@@ -136,5 +137,5 @@ vectorExpr: vectorInit
         | vectorIndexAccess;
         
 
-printlnMacro: PRINTLN '!' '(' printlnArgs ')';
+printlnMacro: PRINTLN '!' '(' printlnArgs? ')' ';';
 printlnArgs: STRING (',' expr)*;

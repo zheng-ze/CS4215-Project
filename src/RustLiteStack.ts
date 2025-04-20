@@ -1,11 +1,4 @@
-import {
-  GOTO,
-  SUPPORTED_TYPES,
-  TypeTag,
-  instruction,
-  instruction_type,
-  type_offset,
-} from "./RustLiteTypes";
+import { SUPPORTED_TYPES, TypeTag, type_offset } from "./RustLiteTypes";
 import { max_words, word_size } from "./RustLiteTypes";
 
 import { error } from "console";
