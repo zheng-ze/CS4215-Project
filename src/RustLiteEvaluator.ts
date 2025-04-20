@@ -66,6 +66,7 @@ import { RustLiteLexer } from "./parser/src/RustLiteLexer";
 import { RustLiteTypeChecker } from "./RustLiteTypeChecker";
 import { RustLiteVirtualMachine } from "./RustLiteVirtualMachine";
 import { RustLiteVisitor } from "./parser/src/RustLiteVisitor";
+import { RustLiteBorrowChecker } from "./RustLiteBorrowChecker";
 
 class RustLiteEvaluatorVisitor
   extends AbstractParseTreeVisitor<void>
@@ -800,6 +801,7 @@ class RustLiteEvaluatorVisitor
 export class RustLiteEvaluator extends BasicEvaluator {
   private executionCount: number;
   private typeChecker: RustLiteTypeChecker;
+  private borrowChecker: RustLiteBorrowChecker;
   private visitor: RustLiteEvaluatorVisitor;
 
   constructor(conductor: IRunnerPlugin) {
@@ -807,6 +809,7 @@ export class RustLiteEvaluator extends BasicEvaluator {
     this.executionCount = 0;
     this.typeChecker = new RustLiteTypeChecker();
     this.visitor = new RustLiteEvaluatorVisitor();
+    this.borrowChecker = new RustLiteBorrowChecker();
   }
 
   async evaluateChunk(chunk: string): Promise<void> {
@@ -839,6 +842,7 @@ export class RustLiteEvaluator extends BasicEvaluator {
 
       // Type check the parsed tree
       const type_env: RustLiteTypeEnv = this.typeChecker.typeCheck(tree);
+      this.borrowChecker.check(tree);
 
       // Evaluate the parsed tree
       this.visitor.visit(tree);
