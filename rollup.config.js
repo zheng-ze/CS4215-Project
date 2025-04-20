@@ -12,6 +12,7 @@ export default {
     sourcemap: true,
     globals: {
       console: "console", // Map the external 'console' module to the browser's global 'console'
+      process: "process", // Map the external 'process' module to the browser's global 'process'
     },
   },
 };
