@@ -67,6 +67,7 @@ import { RustLiteLexer } from "./parser/src/RustLiteLexer";
 import { RustLiteTypeChecker } from "./RustLiteTypeChecker";
 import { RustLiteVirtualMachine } from "./RustLiteVirtualMachine";
 import { RustLiteVisitor } from "./parser/src/RustLiteVisitor";
+import { exit } from "process";
 
 class RustLiteEvaluatorVisitor
   extends AbstractParseTreeVisitor<void>
@@ -830,6 +831,7 @@ export class RustLiteEvaluator extends BasicEvaluator {
           this.conductor.sendOutput(
             `Syntax error at ${line}:${charPositionInLine} - ${msg}`
           );
+          exit(1);
         },
         reportAmbiguity() {},
         reportAttemptingFullContext() {},
@@ -848,6 +850,7 @@ export class RustLiteEvaluator extends BasicEvaluator {
       instructions.forEach((instruction, index) => {
         console.log(`${index}:`, instruction);
       });
+
       try {
         // Create and run VM with instructions
         const vm = new RustLiteVirtualMachine(
