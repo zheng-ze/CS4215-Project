@@ -852,7 +852,7 @@ export class RustLiteEvaluator extends BasicEvaluator {
         // Create and run VM with instructions
         const vm = new RustLiteVirtualMachine(
           [...instructions],
-          (string: String) => this.conductor.sendOutput.bind(this, string)
+          this.conductor.sendOutput.bind(this)
         );
         console.log("=== Runnning Instructions in VM ===");
         const result = vm.run();
