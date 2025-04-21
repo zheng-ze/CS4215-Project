@@ -91,12 +91,12 @@ blockContent: stmt* (finalExpr=expr)?;
 
 exprStmt: expr SEMICOLON;
 
-declareStmt: LET IDENTIFIER COLON type EQUALS expr SEMICOLON
-        | LET IDENTIFIER EQUALS expr SEMICOLON
-        | LET IDENTIFIER {
+declareStmt: LET MUT? IDENTIFIER COLON type EQUALS expr SEMICOLON
+        | LET MUT? IDENTIFIER EQUALS expr SEMICOLON
+        | LET MUT? IDENTIFIER {
                 this.notifyErrorListeners("Type annotations needed", null, null);
             } SEMICOLON? 
-        | LET (COLON type)? {this.notifyErrorListeners("Expected identifier", null, null);} (EQUALS COLON expr)? SEMICOLON;
+        | LET MUT? (COLON type)? {this.notifyErrorListeners("Expected identifier", null, null);} (EQUALS COLON expr)? SEMICOLON;
 
 condStmt: IF logicExpr block (ELSE IF logicExpr block)* (ELSE block)?
         | IF expr {
