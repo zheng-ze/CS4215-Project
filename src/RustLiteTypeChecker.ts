@@ -661,10 +661,20 @@ export class RustLiteTypeChecker {
     );
 
     // Check if all blocks have the same return type
-    const firstType = blockTypes[0];
+    let firstType = blockTypes[0];
     for (let i = 1; i < blockTypes.length; i++) {
       const type = blockTypes[i];
       if (type !== firstType) {
+        // Check if the types are compatible
+        // u32 | i32 is compatible with i32 and u32
+        if (
+          (firstType === "u32 | i32" && (type === "u32" || type === "i32")) ||
+          (type === "u32 | i32" && (firstType === "u32" || firstType === "i32"))
+        ) {
+          firstType = firstType === "u32 | i32" ? type : firstType;
+          continue;
+        }
+
         throw new Error(`Return type mismatch: ${firstType} vs ${type}`);
       }
     }
