@@ -295,15 +295,13 @@ describe("RustLiteEvaluator", () => {
     const evaluator = new RustLiteEvaluator(conductor);
 
     const testCode = `
-    fn square(x: i32) -> i32 {
-      return x * x;
-    }
-    
-    fn sum_of_squares(a: i32, b: i32) -> i32 {
-      return square(a) + square(b);
-    }
-    
     fn main() {
+      fn sum_of_squares(a: i32, b: i32) -> i32 {
+        fn square(x: i32) -> i32 {
+          return x * x;
+        }
+        return square(a) + square(b);
+      }
       println!("Sum of squares: {}", sum_of_squares(3, 4));
     }
     `;
