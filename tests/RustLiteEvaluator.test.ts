@@ -174,6 +174,47 @@ describe("RustLiteEvaluator", () => {
     ]);
   });
 
+  it("should throw an error for division by zero", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+    const testCode = `
+    fn main() {
+      let x = 10 / 0; // Division by zero
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs.length).toBe(1);
+    expect(conductor.outputs[0]).toBe("Runtime Error: Division by zero");
+  });
+
+  it("should throw an error for modulo by zero", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+    const testCode = `
+    fn main() {
+      let x = 10 % 0; // Modulo by zero
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs.length).toBe(1);
+    expect(conductor.outputs[0]).toBe("Runtime Error: Modulo by zero");
+  });
+
+  it("should support mutable variables", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+    const testCode = `
+    fn main() {
+      let mut x = 10;
+      x = 20;
+      println!("x: {}", x);
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs.length).toBe(1);
+    expect(conductor.outputs[0]).toBe("x: 20");
+  });
+
   it("should throw an error while mutating immutable variables", async () => {
     const conductor = new JestConductor();
     const evaluator = new RustLiteEvaluator(conductor);
@@ -206,6 +247,47 @@ describe("RustLiteEvaluator", () => {
     `;
     await evaluator.evaluateChunk(testCode);
     expect(conductor.outputs).toEqual(["3 + 4 = 7"]);
+  });
+
+  it("should shadow variables in nested scopes", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+    const testCode = `
+    fn main() {
+      let x = 10;
+      {
+        let x = 20;
+        println!("Inner x: {}", x);
+      }
+      println!("Outer x: {}", x);
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs.length).toBe(2);
+    expect(conductor.outputs[0]).toBe("Inner x: 20");
+    expect(conductor.outputs[1]).toBe("Outer x: 10");
+  });
+  it("should shadow functions in nested scopes", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+    const testCode = `
+    fn main() {
+      fn x() {
+        println!("Inner x");
+      }
+      {
+        fn x() {
+          println!("Inner x in block");
+        }
+        x();
+      }
+      x();
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs.length).toBe(2);
+    expect(conductor.outputs[0]).toBe("Inner x in block");
+    expect(conductor.outputs[1]).toBe("Inner x");
   });
 
   it("should handle nested function calls", async () => {
@@ -326,6 +408,49 @@ describe("RustLiteEvaluator", () => {
     ]);
   });
 
+  it("should throw an error for out of scope variables", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+    const testCode = `
+    fn main() {
+      let x = 10;
+      {
+        let y = 20;
+        println!("Inner x: {}, y: {}", x, y);
+      }
+      println!("Outer x: {}", x);
+      println!("y should be out of scope: {}", y); // This would be a compile error
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs.length).toBe(1);
+    expect(conductor.outputs[0]).toBe("Compile Error: Identifier y not found");
+  });
+
+  it("should throw an error for out of scope functions", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+    const testCode = `
+    fn main() {
+      let x: u32 = 5;
+      let y: u32 = 10;
+      fn sum(a: u32, b: u32) -> u32 {
+        fn other_sum(x: u32, y: u32) -> u32 {
+            return x + y;
+        }
+        return other_sum(a, b);
+      }
+      let z = other_sum(x, y); // This would be a compile error
+      return z;
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs.length).toBe(1);
+    expect(conductor.outputs[0]).toBe(
+      "Compile Error: Identifier other_sum not found"
+    );
+  });
+
   it("should handle type errors", async () => {
     const conductor = new JestConductor();
     const evaluator = new RustLiteEvaluator(conductor);
@@ -352,5 +477,25 @@ describe("RustLiteEvaluator", () => {
     `;
     await evaluator.evaluateChunk(testCode);
     expect(conductor.outputs[0]).toContain("Error");
+  });
+
+  it("should detect type errors in function calls", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+
+    const testCode = `
+    fn add(a: i32, b: i32) -> i32 {
+      return a + b;
+    }
+    
+    fn main() {
+      let result = add(3, true); // Type error
+      println!("Result: {}", result);
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs[0]).toBe(
+      "Compile Error: Mismatched types: expected i32 but got bool"
+    );
   });
 });

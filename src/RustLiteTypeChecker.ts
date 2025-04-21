@@ -404,10 +404,15 @@ export class RustLiteTypeChecker {
         leftType !== rightType &&
         leftType !== "u32 | i32" &&
         rightType !== "u32 | i32"
-      )
+      ) {
+        const leftTypeToPrint =
+          typeof leftType === "object" ? JSON.stringify(leftType) : leftType;
+        const rightTypeToPrint =
+          typeof rightType === "object" ? JSON.stringify(rightType) : rightType;
         throw new Error(
-          `Mismatched types for ${opType}: ${leftType} and ${rightType}`
+          `Mismatched types for ${opType}: ${leftTypeToPrint} and ${rightTypeToPrint}`
         );
+      }
 
       return "bool";
     }
@@ -450,10 +455,16 @@ export class RustLiteTypeChecker {
         for (let i = 1; i < expressions.length; i++) {
           const currentType = this.getTypeOfExpr(expressions[i]);
           if (currentType !== firstType) {
+            const currentTypeToPrint =
+              typeof currentType === "object"
+                ? JSON.stringify(currentType)
+                : currentType;
+            const firstTypeToPrint =
+              typeof firstType === "object"
+                ? JSON.stringify(firstType)
+                : firstType;
             throw new Error(
-              `Mismatched types: expected ${JSON.stringify(
-                firstType
-              )} but got ${JSON.stringify(currentType)}`
+              `Mismatched types: expected ${firstTypeToPrint} but got ${currentTypeToPrint}`
             );
           }
         }
@@ -504,12 +515,17 @@ export class RustLiteTypeChecker {
             argType === "u32 | i32" &&
             (paramType === "i32" || paramType === "u32")
           )
-        )
+        ) {
+          const paramTypeToPrint =
+            typeof paramType === "object"
+              ? JSON.stringify(paramType)
+              : paramType;
+          const argTypeToPrint =
+            typeof argType === "object" ? JSON.stringify(argType) : argType;
           throw new Error(
-            `Mismatched types: expected ${JSON.stringify(
-              paramType
-            )} but got ${JSON.stringify(argType)}`
+            `Mismatched types: expected ${paramTypeToPrint} but got ${argTypeToPrint}`
           );
+        }
       }
     }
 
