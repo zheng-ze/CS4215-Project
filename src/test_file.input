@@ -6,5 +6,5 @@ fn main() {
     return x + y;
   }
   let z = sum(b, c);
-  z;
+  println!("{}", z);
 }

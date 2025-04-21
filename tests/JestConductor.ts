@@ -8,7 +8,8 @@ import { ModuleClass } from "conductor/dist/conductor/module/types/ModuleClass";
 import { PluginClass } from "conductor/dist/conduit/types/PluginClass";
 import { readFileSync } from "fs";
 
-export class MockConductor implements IRunnerPlugin {
+export class JestConductor implements IRunnerPlugin {
+  outputs: string[] = [];
   constructor() {}
   requestFile(fileName: string): Promise<string | undefined> {
     // Open and Read the test file into a string
@@ -62,6 +63,6 @@ export class MockConductor implements IRunnerPlugin {
 
   // Implement the required methods from IRunnerPlugin
   sendOutput(message: string): void {
-    console.log(`[CONDUCTOR OUTPUT] ${message}`);
+    this.outputs.push(message);
   }
 }
