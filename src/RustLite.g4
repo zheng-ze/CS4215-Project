@@ -81,13 +81,15 @@ stmt: exprStmt
     | fnDeclareStmt
     | returnStmt
     | block
-    | printlnMacro;
+    | printlnMacro
+    | assignStmt;
 
 // expr for implicit return in fn block. Need to check when compiling to bytecode
 block: '{' blockContent '}';
 
 blockContent: stmt* (finalExpr=expr)?;
 
+assignStmt: IDENTIFIER EQUALS exprStmt;
 
 exprStmt: expr SEMICOLON;
 

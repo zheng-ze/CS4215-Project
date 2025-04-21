@@ -12,6 +12,7 @@ import { GlobalElementContext } from "./RustLiteParser.js";
 import { StmtContext } from "./RustLiteParser.js";
 import { BlockContext } from "./RustLiteParser.js";
 import { BlockContentContext } from "./RustLiteParser.js";
+import { AssignStmtContext } from "./RustLiteParser.js";
 import { ExprStmtContext } from "./RustLiteParser.js";
 import { DeclareStmtContext } from "./RustLiteParser.js";
 import { CondStmtContext } from "./RustLiteParser.js";
@@ -130,6 +131,16 @@ export class RustLiteListener implements ParseTreeListener {
      * @param ctx the parse tree
      */
     exitBlockContent?: (ctx: BlockContentContext) => void;
+    /**
+     * Enter a parse tree produced by `RustLiteParser.assignStmt`.
+     * @param ctx the parse tree
+     */
+    enterAssignStmt?: (ctx: AssignStmtContext) => void;
+    /**
+     * Exit a parse tree produced by `RustLiteParser.assignStmt`.
+     * @param ctx the parse tree
+     */
+    exitAssignStmt?: (ctx: AssignStmtContext) => void;
     /**
      * Enter a parse tree produced by `RustLiteParser.exprStmt`.
      * @param ctx the parse tree

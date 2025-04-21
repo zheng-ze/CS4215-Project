@@ -5,6 +5,7 @@ import {
 } from "antlr4ng";
 import {
   ArithExprContext,
+  AssignStmtContext,
   BlockContentContext,
   BlockContext,
   CondStmtContext,
@@ -335,6 +336,7 @@ class RustLiteEvaluatorVisitor
     const returnStmtCtx = ctx.returnStmt();
     const blockCtx = ctx.block();
     const printlnMacroCtx = ctx.printlnMacro();
+    const assignStmtCtx = ctx.assignStmt();
 
     if (exprStmtCtx) return this.visitExprStmt(exprStmtCtx);
     if (declareStmtCtx) return this.visitDeclareStmt(declareStmtCtx);
@@ -344,6 +346,7 @@ class RustLiteEvaluatorVisitor
     if (returnStmtCtx) return this.visitReturnStmt(returnStmtCtx);
     if (blockCtx) return this.visitBlock(blockCtx);
     if (printlnMacroCtx) return this.visitPrintlnMacro(printlnMacroCtx);
+    if (assignStmtCtx) return this.visitAssignStmt(assignStmtCtx);
   }
 
   visitBlock(ctx: BlockContext): void {
@@ -478,6 +481,10 @@ class RustLiteEvaluatorVisitor
     console.log("Visiting ExprStmt");
     const exprCtx = ctx.expr();
     if (exprCtx) return this.visitExpr(exprCtx);
+  }
+
+  visitAssignStmt(ctx: AssignStmtContext): void {
+    console.log("Visiting assignment statement");
   }
 
   visitDeclareStmt(ctx: DeclareStmtContext): void {
