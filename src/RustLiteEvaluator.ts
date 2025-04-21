@@ -55,6 +55,7 @@ import {
   loadConstant,
   loadFunction,
   println,
+  reassign,
   reset,
   set_vector,
   unaryOperation,
@@ -68,6 +69,7 @@ import { RustLiteTypeChecker } from "./RustLiteTypeChecker";
 import { RustLiteVirtualMachine } from "./RustLiteVirtualMachine";
 import { RustLiteVisitor } from "./parser/src/RustLiteVisitor";
 import { RustLiteBorrowChecker } from "./RustLiteBorrowChecker";
+import { off } from "process";
 
 class RustLiteEvaluatorVisitor
   extends AbstractParseTreeVisitor<void>
@@ -95,12 +97,10 @@ class RustLiteEvaluatorVisitor
         throw `Error while visiting statement ${globalElements[i]}, with error: ${error}`;
       }
     }
-    const compileTimePos = { first: 0, second: 0 }; // TODO: Get the compile time position of the main function
+    const compileTimePos = { first: 0, second: 0 };
     if (!compileTimePos) {
       // No main function found nothing will execute so return undefined
-      this.instrs = [
-        loadConstant(0), // TODO: Add null as supported type and return it
-      ];
+      this.instrs = [loadConstant(0)];
     }
 
     // After processing all global elements, call main if it exists
@@ -119,7 +119,6 @@ class RustLiteEvaluatorVisitor
     if (ctx.fnDeclareStmt()) {
       return this.visitFnDeclareStmt(ctx.fnDeclareStmt());
     }
-    // TODO: Check if there is a main function and call it if it exists
     throw new Error(`Unknown global element: ${ctx.getText()}`);
   }
 
@@ -147,7 +146,7 @@ class RustLiteEvaluatorVisitor
     if (identifier) {
       const name = identifier.getText();
 
-      let paramDetails = this.findParam(name);
+      let paramDetails = this.findName(name);
       console.log(`Loading value of :${name} into top of stack`);
       this.instrs[this.wc++] = load(
         paramDetails.scopeLevel,
@@ -196,20 +195,22 @@ class RustLiteEvaluatorVisitor
     console.log(`Changed function Scope From: ${oldScope} To: ${fnData.scope}`);
   }
 
-  findParam(name: string) {
-    console.log(`Finding param: ${name}`);
+  findName(name: string) {
+    console.log(`Finding name: ${name}`);
     console.log(`Current Length of ScopeList: ${this.scopeList.length}`);
     console.log(this.scopeList[this.scopeList.length - 1]);
     for (let i = this.scopeList.length - 1; i >= 0; i--) {
       const currScope = this.scopeList[i];
-      let offset = currScope.get(name);
-      if (offset === undefined) {
+      let tuple = currScope.get(name);
+      if (tuple === undefined) {
         continue;
       } else {
+        const offset = tuple.first;
+        const isMutable = tuple.second;
         console.log(
-          `Found Param: ${name}, Scope Level: ${i}, Offset: ${offset}`
+          `Found Param: ${name}, Scope Level: ${i}, Offset: ${offset}, Mutable: ${isMutable}`
         );
-        return { scopeLevel: i, offset: offset };
+        return { scopeLevel: i, offset: offset, isMutable: isMutable };
       }
     }
     throw new Error(`Undefined variable: ${name}`);
@@ -240,13 +241,12 @@ class RustLiteEvaluatorVisitor
     if (identifier) {
       const name = identifier.getText();
 
-      let paramDetails = this.findParam(name);
+      let paramDetails = this.findName(name);
       this.instrs[this.wc++] = load(
         paramDetails.scopeLevel,
         paramDetails.offset
       );
       return;
-      // throw new Error(`Identifier not implemented: ${identifier.getText()}`);
     }
 
     if (innerCtx) return this.visitArithExpr(innerCtx);
@@ -292,7 +292,7 @@ class RustLiteEvaluatorVisitor
     if (identifier) {
       const name = identifier.getText();
 
-      let paramDetails = this.findParam(name);
+      let paramDetails = this.findName(name);
       this.instrs[this.wc++] = load(
         paramDetails.scopeLevel,
         paramDetails.offset
@@ -485,18 +485,32 @@ class RustLiteEvaluatorVisitor
 
   visitAssignStmt(ctx: AssignStmtContext): void {
     console.log("Visiting assignment statement");
+    const name = ctx.IDENTIFIER()?.getText();
+    if (!name) throw new Error("Assignment statements require a name");
+
+    const assignDetails = this.findName(name);
+    const { scopeLevel, offset, isMutable } = assignDetails;
+
+    if (!isMutable)
+      throw new Error(`Cannot assign twice to immutable variable ${name}`);
+    const exprStmtCtx = ctx.exprStmt();
+    if (!exprStmtCtx) throw new Error("LHS needs a RHS to be assigned");
+    this.visitExprStmt(exprStmtCtx);
+    this.instrs[this.wc++] = reassign(scopeLevel, offset);
+    return;
   }
 
   visitDeclareStmt(ctx: DeclareStmtContext): void {
     console.log(`Visiting DeclareStmt: ${ctx.getText()}`);
-    const typeCtx = ctx.type();
+    // checks if the variable is declared mutable
+    const isMutable = ctx.MUT() ? true : false;
     const name = ctx.IDENTIFIER()?.getText();
     if (!name) throw new Error("Variable declaration requires a name");
 
     // Add variable to current scope
     let currentScope = this.scopeList[this.scopeList.length - 1];
     const offset = currentScope.size;
-    currentScope.set(name, offset);
+    currentScope.set(name, { first: offset, second: isMutable });
 
     const value = ctx.expr();
     if (value) {
@@ -593,14 +607,6 @@ class RustLiteEvaluatorVisitor
       names.push(name);
     }
     return [types, names];
-  }
-
-  private processReturnType(ctx: ReturnTypeContext): string {
-    console.log("Visiting ReturnType");
-    const type = ctx.type();
-    if (!ctx || !type) return "void";
-
-    return type.getText();
   }
 
   visitReturnStmt(ctx: ReturnStmtContext): void {
@@ -736,7 +742,7 @@ class RustLiteEvaluatorVisitor
     if (!vector || !index) {
       throw new Error("Invalid vector index access");
     }
-    let vectorDetails = this.findParam(vector.toString());
+    let vectorDetails = this.findName(vector.toString());
     this.instrs[this.wc++] = load(
       vectorDetails.scopeLevel,
       vectorDetails.offset
@@ -752,7 +758,7 @@ class RustLiteEvaluatorVisitor
     if (!vector) {
       throw new Error("Cannot find the value of undefined in current scope");
     }
-    const vectorDetails = this.findParam(vector.toString());
+    const vectorDetails = this.findName(vector.toString());
     this.instrs[this.wc++] = load(
       vectorDetails.scopeLevel,
       vectorDetails.offset

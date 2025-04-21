@@ -49,16 +49,17 @@ export enum instruction_type {
   EXIT_SCOPE, // 7
   LD, // 8
   ASSIGN, // 9
-  LDF, // 10
-  CALL, // 11
-  TAIL_CALL, // 12
-  RESET, // 13
-  DONE, // 14
-  ALLOC_VECTOR, // 15
-  SET_VECTOR, // 16
-  GET_VECTOR, // 17
-  VECTOR_LENGTH, // 18
-  PRINT_LINE, // 19
+  REASSIGN, // 10
+  LDF, // 11
+  CALL, // 12
+  TAIL_CALL, // 13
+  RESET, // 14
+  DONE, // 15
+  ALLOC_VECTOR, // 16
+  SET_VECTOR, // 17
+  GET_VECTOR, // 18
+  VECTOR_LENGTH, // 19
+  PRINT_LINE, // 20
 }
 
 export enum HeapTag {
@@ -126,6 +127,11 @@ export interface ASSIGN extends instruction {
   type: instruction_type.ASSIGN;
 }
 
+export interface REASSIGN extends instruction {
+  type: instruction_type.REASSIGN;
+  pos: Pair<number>;
+}
+
 export interface LDF extends instruction {
   type: instruction_type.LDF;
   addr: number;
@@ -176,4 +182,4 @@ export interface Tuple<X, Y> {
   second: Y;
 }
 
-export interface Scope extends Map<string, number> {}
+export interface Scope extends Map<string, Tuple<number, boolean>> {}
