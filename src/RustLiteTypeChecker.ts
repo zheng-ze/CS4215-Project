@@ -691,7 +691,9 @@ export class RustLiteTypeChecker {
 
     if (missingArgs > 0) {
       throw new Error(
-        `${missingArgs} positional argument in format string, but no arguments were given`
+        `${
+          missingArgs + numArgs
+        } positional argument in format string, but ${numArgs} arguments were given`
       );
     }
   }

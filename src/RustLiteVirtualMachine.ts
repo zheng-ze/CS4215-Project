@@ -439,7 +439,11 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
     if (missingArgs > 0) {
       throw new Error(
-        `${missingArgs} positional argument in format string, but no arguments were given`
+        `${
+          missingArgs + args.length
+        } positional argument in format string, but ${
+          args.length
+        } arguments were given`
       );
     }
 
