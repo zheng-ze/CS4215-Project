@@ -1,10 +1,12 @@
 fn main() {
-  let a: Vec<u64> = vec![10, 20, 30];
-  let b = 10;
-  let c = 5;
-  fn sum(x: u64, y: u64) -> u64 {
-    return x + y;
-  }
-  let z = sum(b, c);
-  println!("{}", z);
-}
+      println!("true && true: {}", true && true);
+      println!("true && false: {}", true && false);
+      println!("true || false: {}", true || false);
+      println!("!true: {}", !true);
+      println!("10 > 5: {}", 10 > 5);
+      println!("5 >= 5: {}", 5 >= 5);
+      println!("3 < 8: {}", 3 < 8);
+      println!("4 <= 4: {}", 4 <= 4);
+      println!("5 == 5: {}", 5 == 5);
+      println!("6 != 7: {}", 6 != 7);
+    }

@@ -25,8 +25,8 @@ SEMICOLON: ';';
 
 INT: [0-9]+;
 BOOL: 'true' | 'false';
-U64_TYPE: 'u64';
-I64_TYPE: 'i64';
+U32_TYPE: 'u32';
+I32_TYPE: 'i32';
 BOOL_TYPE: 'bool';
 STRING: '"' (~["\r\n] | '\\"')* '"';
 METHOD_ACCESSOR: '::';
@@ -38,7 +38,7 @@ ERROR_CHAR: . -> channel(HIDDEN);
 WS: [ \t\r\n]+ -> skip;
 COMMENT: '//' ~[\r\n]* -> skip;
 
-type: U64_TYPE | I64_TYPE | BOOL_TYPE | vectorType;
+type: U32_TYPE | I32_TYPE | BOOL_TYPE | vectorType;
 
 expr: '(' inner=expr ')'
     | primary=IDENTIFIER
@@ -66,6 +66,7 @@ logicExpr: primary=BOOL
         | fnCall
         | '(' inner=logicExpr ')'
         | arithLeft=arithExpr op=('>'|'<'|'=='|'!='|'<='|'>=') arithRight=arithExpr
+        | left=logicExpr op=('>'|'<'|'=='|'!='|'<='|'>=') right=logicExpr
         | op='!' right=logicExpr
         | left=logicExpr op='&&' right=logicExpr
         | left=logicExpr op='||' right=logicExpr

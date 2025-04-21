@@ -253,7 +253,7 @@ class RustLiteEvaluatorVisitor
     if (opText === "-" && !leftCtx && rightCtx) {
       // Unary minus
       this.visitArithExpr(rightCtx);
-      this.instrs[this.wc++] = unaryOperation("-");
+      this.instrs[this.wc++] = unaryOperation("-unary");
       return;
     }
 

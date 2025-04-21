@@ -7,7 +7,7 @@ export const type_offset = 8;
 export const max_words = 2048;
 
 // u64 | i64 type is for integers that are positive and within the range of i64 only to be used in type inference
-export type PrimitiveType = "u64" | "i64" | "bool" | "u64 | i64";
+export type PrimitiveType = "u32" | "i32" | "bool" | "u32 | i32";
 export type VoidType = "void";
 
 export type RustLiteType =

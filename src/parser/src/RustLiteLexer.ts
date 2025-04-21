@@ -49,8 +49,8 @@ export class RustLiteLexer extends antlr.Lexer {
     public static readonly SEMICOLON = 42;
     public static readonly INT = 43;
     public static readonly BOOL = 44;
-    public static readonly U64_TYPE = 45;
-    public static readonly I64_TYPE = 46;
+    public static readonly U32_TYPE = 45;
+    public static readonly I32_TYPE = 46;
     public static readonly BOOL_TYPE = 47;
     public static readonly STRING = 48;
     public static readonly METHOD_ACCESSOR = 49;
@@ -70,7 +70,7 @@ export class RustLiteLexer extends antlr.Lexer {
         "'()'", "'['", "']'", "'.'", "'let'", "'mut'", "'fn'", "'if'", "'else'", 
         "'while'", "'return'", "'break'", "'continue'", "'vec'", "'new'", 
         "'push'", "'pop'", "'len'", "'println'", "'<'", "'>'", "'='", "':'", 
-        "';'", null, null, "'u64'", "'i64'", "'bool'", null, "'::'", "'Vec'"
+        "';'", null, null, "'u32'", "'i32'", "'bool'", null, "'::'", "'Vec'"
     ];
 
     public static readonly symbolicNames = [
@@ -78,8 +78,8 @@ export class RustLiteLexer extends antlr.Lexer {
         null, null, null, null, null, null, null, null, null, null, null, 
         null, "LET", "MUT", "FN", "IF", "ELSE", "WHILE", "RETURN", "BREAK", 
         "CONTINUE", "VEC", "NEW", "PUSH", "POP", "LEN", "PRINTLN", "LANGLE", 
-        "RANGLE", "EQUALS", "COLON", "SEMICOLON", "INT", "BOOL", "U64_TYPE", 
-        "I64_TYPE", "BOOL_TYPE", "STRING", "METHOD_ACCESSOR", "VECTOR_MODULE_NAME", 
+        "RANGLE", "EQUALS", "COLON", "SEMICOLON", "INT", "BOOL", "U32_TYPE", 
+        "I32_TYPE", "BOOL_TYPE", "STRING", "METHOD_ACCESSOR", "VECTOR_MODULE_NAME", 
         "IDENTIFIER", "ERROR_CHAR", "WS", "COMMENT"
     ];
 
@@ -93,7 +93,7 @@ export class RustLiteLexer extends antlr.Lexer {
         "T__16", "T__17", "T__18", "T__19", "T__20", "T__21", "LET", "MUT", 
         "FN", "IF", "ELSE", "WHILE", "RETURN", "BREAK", "CONTINUE", "VEC", 
         "NEW", "PUSH", "POP", "LEN", "PRINTLN", "LANGLE", "RANGLE", "EQUALS", 
-        "COLON", "SEMICOLON", "INT", "BOOL", "U64_TYPE", "I64_TYPE", "BOOL_TYPE", 
+        "COLON", "SEMICOLON", "INT", "BOOL", "U32_TYPE", "I32_TYPE", "BOOL_TYPE", 
         "STRING", "METHOD_ACCESSOR", "VECTOR_MODULE_NAME", "IDENTIFIER", 
         "ERROR_CHAR", "WS", "COMMENT",
     ];
@@ -213,8 +213,8 @@ export class RustLiteLexer extends antlr.Lexer {
         5,114,0,0,254,255,5,117,0,0,255,262,5,101,0,0,256,257,5,102,0,0,
         257,258,5,97,0,0,258,259,5,108,0,0,259,260,5,115,0,0,260,262,5,101,
         0,0,261,252,1,0,0,0,261,256,1,0,0,0,262,88,1,0,0,0,263,264,5,117,
-        0,0,264,265,5,54,0,0,265,266,5,52,0,0,266,90,1,0,0,0,267,268,5,105,
-        0,0,268,269,5,54,0,0,269,270,5,52,0,0,270,92,1,0,0,0,271,272,5,98,
+        0,0,264,265,5,51,0,0,265,266,5,50,0,0,266,90,1,0,0,0,267,268,5,105,
+        0,0,268,269,5,51,0,0,269,270,5,50,0,0,270,92,1,0,0,0,271,272,5,98,
         0,0,272,273,5,111,0,0,273,274,5,111,0,0,274,275,5,108,0,0,275,94,
         1,0,0,0,276,282,5,34,0,0,277,281,8,1,0,0,278,279,5,92,0,0,279,281,
         5,34,0,0,280,277,1,0,0,0,280,278,1,0,0,0,281,284,1,0,0,0,282,280,

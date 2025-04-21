@@ -190,10 +190,10 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     },
     "==": (left: SUPPORTED_TYPES, right: SUPPORTED_TYPES) => left === right,
     "!=": (left: SUPPORTED_TYPES, right: SUPPORTED_TYPES) => left !== right,
-    "<": (left: number, right: number) => left < right,
-    "<=": (left: number, right: number) => left <= right,
-    ">": (left: number, right: number) => left > right,
-    ">=": (left: number, right: number) => left >= right,
+    "<": (left: SUPPORTED_TYPES, right: SUPPORTED_TYPES) => left < right,
+    "<=": (left: SUPPORTED_TYPES, right: SUPPORTED_TYPES) => left <= right,
+    ">": (left: SUPPORTED_TYPES, right: SUPPORTED_TYPES) => left > right,
+    ">=": (left: SUPPORTED_TYPES, right: SUPPORTED_TYPES) => left >= right,
     "&&": (left: boolean, right: boolean) => left && right,
     "||": (left: boolean, right: boolean) => left || right,
   };
@@ -210,9 +210,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
 
     // Convert numeric 0/1 to boolean for boolean operations
     if (op === "&&" || op === "||") {
-      return operation(left === 0 ? false : true, right === 0 ? false : true)
-        ? 1
-        : 0;
+      return operation(left, right);
     }
 
     // For comparison operators, return 1 for true and 0 for false
@@ -224,7 +222,7 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
       op === ">" ||
       op === ">="
     ) {
-      return operation(left, right) ? 1 : 0;
+      return operation(left, right);
     }
 
     return operation(left, right);

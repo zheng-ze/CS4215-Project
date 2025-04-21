@@ -105,56 +105,67 @@ export class RustLiteTypeChecker {
       throw new Error(`Invalid variable declaration: initializer is required`);
     const exprType = this.getTypeOfExpr(exprCtx);
 
+    console.log("Declared type:", type);
+    console.log("Expression type:", exprType);
+
     if (exprType === "void")
       throw new Error(
         `Invalid variable declaration: initializer cannot be void`
       );
 
-    if (
-      typeof exprType === "object" &&
-      exprType.kind === "vec" &&
-      exprType.elementType === undefined
-    ) {
-      if (!type)
-        throw new Error(
-          "Type annotation is required for empty vector initialization"
-        );
-      // Empty vector initialization. Take declared type
-      this.current_frame.mappings.set(name, type);
-    }
-
-    if (type && exprType && type !== exprType) {
-      // Type mismatch. Check if the type is a vector
-      if (
-        typeof type === "object" &&
-        type.kind === "vec" &&
-        typeof exprType === "object" &&
-        exprType.kind === "vec"
-      ) {
-        // Check if the vector types are compatible
-        if (type.elementType === undefined) {
-          throw new Error("Missing generics for struct 'Vec'");
-        }
-
-        if (type.elementType !== exprType.elementType) {
+    // Check if the type is valid
+    // Type annotation available check that expr is compatible with type
+    let isValid = true;
+    if (type) {
+      // Handle integer
+      if (typeof type === "object" && typeof exprType !== "object") {
+        isValid = false;
+      } else if (typeof type === "object" && typeof exprType === "object") {
+        if (type.kind !== exprType.kind) {
+          isValid = false;
+        } else if (
+          type.kind === "vec" &&
+          exprType.kind === "vec" &&
+          type.elementType !== exprType.elementType
+        ) {
+          // Check for u32 | i32 in exprType's elementType
           if (
-            !(
-              exprType.elementType === "u64 | i64" &&
-              (type.elementType === "u64" || type.elementType === "i64")
-            )
-          ) {
-            throw new Error(
-              `Type mismatch: expected ${JSON.stringify(
-                type
-              )} but got ${JSON.stringify(exprType)}`
-            );
-          }
+            exprType.elementType !== "u32 | i32" ||
+            (type.elementType !== "u32" && type.elementType !== "i32")
+          )
+            isValid = false;
         }
+      } else if (
+        // Left with u32 and i32 and bool
+        type !== exprType &&
+        exprType !== "u32 | i32" &&
+        (type === "i32" || type === "u32")
+      ) {
+        isValid = false;
+      }
+    } else {
+      // Type annotation not present. Infer type from expression
+      // If type is a vector it cannot have a void element
+      if (typeof exprType === "object" && exprType.kind === "vec") {
+        if (exprType.elementType === undefined)
+          throw new Error(
+            `Type annotation is required to initialize empty vector`
+          );
       }
     }
 
+    if (!isValid) {
+      const typeToPrint =
+        typeof type === "object" ? JSON.stringify(type) : type;
+      const exprTypeToPrint =
+        typeof exprType === "object" ? JSON.stringify(exprType) : exprType;
+      throw new Error(
+        `Type mismatch: expected ${typeToPrint} but got ${exprTypeToPrint}`
+      );
+    }
+
     // Add the variable to the current frame
-    this.current_frame.mappings.set(name, exprType);
+    this.current_frame.mappings.set(name, type ?? exprType);
   }
 
   private visitFnDeclareStmt(ctx: FnDeclareStmtContext): RustLiteType {
@@ -232,25 +243,44 @@ export class RustLiteTypeChecker {
     console.log("Right:", right?.getText() ?? "NULL");
     console.log("Operator:", op?.text ?? "NULL");
 
-    if (!left || !right) {
+    if (!left && !right) {
       throw new Error("Invalid arithmetic expression");
     }
 
     // Unary minus
     if (!left && right && op) {
-      if (op.type.toString() !== "-")
+      console.log("In unary minus");
+      const opType = op.text;
+      if (!opType || opType !== "-")
         throw new Error("Invalid unary arithmetic operation");
 
-      const rightType = this.getTypeOfArithExpr(right);
+      const rightText = right.getText();
 
-      if (
-        rightType !== "i64" &&
-        rightType !== "u64" &&
-        rightType !== "u64 | i64"
-      )
-        throw new Error("Invalid type for unary minus operation");
+      // Check if rightText is a number
+      let number = parseInt(rightText);
+      console.log("Number:", number);
+      if (Number.isNaN(number)) {
+        const rightType = this.getTypeOfArithExpr(right);
+        console.log("Right type:", rightType);
 
-      return rightType;
+        if (
+          rightType !== "i32" &&
+          rightType !== "u32" &&
+          rightType !== "u32 | i32"
+        ) {
+          const typeToPrint =
+            typeof rightType === "object"
+              ? JSON.stringify(rightType)
+              : rightType;
+          throw new Error(
+            `Cannot apply unary operator - to type ${typeToPrint}`
+          );
+        }
+      } else {
+        if (number < -(2 ** 31) || number > 2 ** 31)
+          throw new Error(`Integer out of range`);
+      }
+      return "i32";
     }
 
     // Binary operation
@@ -268,13 +298,13 @@ export class RustLiteTypeChecker {
       const leftType = this.getTypeOfArithExpr(left);
       const rightType = this.getTypeOfArithExpr(right);
 
-      if (leftType !== "i64" && leftType !== "u64" && leftType !== "u64 | i64")
+      if (leftType !== "i32" && leftType !== "u32" && leftType !== "u32 | i32")
         throw new Error("Invalid type for left operand");
 
       if (
-        rightType !== "i64" &&
-        rightType !== "u64" &&
-        rightType !== "u64 | i64"
+        rightType !== "i32" &&
+        rightType !== "u32" &&
+        rightType !== "u32 | i32"
       )
         throw new Error("Invalid type for right operand");
 
@@ -282,11 +312,11 @@ export class RustLiteTypeChecker {
         return leftType;
       }
 
-      if (leftType === "u64 | i64" && rightType !== "u64 | i64") {
+      if (leftType === "u32 | i32" && rightType !== "u32 | i32") {
         return rightType;
       }
 
-      if (leftType !== "u64 | i64" && rightType === "u64 | i64") {
+      if (leftType !== "u32 | i32" && rightType === "u32 | i32") {
         return leftType;
       }
 
@@ -307,12 +337,19 @@ export class RustLiteTypeChecker {
     if (inner) return this.getTypeOfLogicExpr(inner);
     const left = ctx._left;
     const right = ctx._right;
+    const leftArith = ctx._arithLeft;
+    const rightArith = ctx._arithRight;
     const op = ctx._op;
+
+    console.log("Left:", left?.getText() ?? "NULL");
+    console.log("Right:", right?.getText() ?? "NULL");
+    console.log("Operator:", op?.text ?? "NULL");
 
     // Logical not
     if (!left && right && op) {
-      if (op.type.toString() !== "!")
-        throw new Error("Invalid unary logical operation");
+      const opType = op.text ?? "";
+
+      if (opType !== "!") throw new Error("Invalid unary logical operation");
 
       const rightType = this.getTypeOfLogicExpr(right);
 
@@ -324,19 +361,54 @@ export class RustLiteTypeChecker {
 
     // Binary operation
     if (left && right && op) {
-      const opType = op.type.toString();
-      if (opType !== "&&" && opType !== "||")
+      const opType = op.text ?? "";
+      if (
+        opType !== "&&" &&
+        opType !== "||" &&
+        opType !== "==" &&
+        opType !== "!=" &&
+        opType !== "<" &&
+        opType !== "<=" &&
+        opType !== ">" &&
+        opType !== ">="
+      )
         throw new Error("Unknown logical operation");
 
       const leftType = this.getTypeOfLogicExpr(left);
       const rightType = this.getTypeOfLogicExpr(right);
 
-      if (leftType !== "bool" || rightType !== "bool") {
-        const errorType = leftType === "bool" ? rightType : leftType;
-        throw new Error("Expected bool got: " + errorType);
+      if (leftType !== "bool" || rightType !== "bool")
+        throw new Error("Expected bool got: " + leftType + " and " + rightType);
+      return "bool";
+    }
+
+    // Binary operation with arithmetic expressions
+    if (leftArith && rightArith && op) {
+      const opType = op.text ?? "";
+      if (
+        opType !== "==" &&
+        opType !== "!=" &&
+        opType !== "<" &&
+        opType !== "<=" &&
+        opType !== ">" &&
+        opType !== ">="
+      ) {
+        throw new Error("Unknown logical operation");
       }
 
-      return leftType;
+      const leftType = this.getTypeOfArithExpr(leftArith);
+      const rightType = this.getTypeOfArithExpr(rightArith);
+
+      if (
+        leftType !== rightType &&
+        leftType !== "u32 | i32" &&
+        rightType !== "u32 | i32"
+      )
+        throw new Error(
+          `Mismatched types for ${opType}: ${leftType} and ${rightType}`
+        );
+
+      return "bool";
     }
 
     // If we reach here, it means we have an invalid expression
@@ -389,7 +461,7 @@ export class RustLiteTypeChecker {
         return { kind: "vec", elementType: firstType };
       }
     }
-    if (vectorLength) return "u64 | i64";
+    if (vectorLength) return "u32 | i32";
     if (vectorIndex) {
       const vectorName = vectorIndex.IDENTIFIER().getText();
       const vectorType = this.getTypeOfIdentifier(vectorName);
@@ -428,8 +500,8 @@ export class RustLiteTypeChecker {
       if (argType !== paramType) {
         if (
           !(
-            argType === "u64 | i64" &&
-            (paramType === "i64" || paramType === "u64")
+            argType === "u32 | i32" &&
+            (paramType === "i32" || paramType === "u32")
           )
         )
           throw new Error(
@@ -739,21 +811,21 @@ export class RustLiteTypeChecker {
         if (isNaN(number)) {
           throw new Error(`Invalid integer: ${token.text}`);
         }
-        if (number < -(2 ** 63) || number > 2 ** 64 - 1)
+        if (number < -(2 ** 31) || number > 2 ** 32 - 1)
           throw new Error(`Integer out of range: ${token.text}`);
-        if (number < 0) return "i64";
-        if (number < 2 ** 63 - 1) return "u64 | i64";
-        return "u64";
+        if (number < 0) return "i32";
+        if (number < 2 ** 31 - 1) return "u32 | i32";
+        return "u32";
       case RustLiteParser.IDENTIFIER:
         const name = token.text;
         if (!name || name.length === 0) {
           throw new Error(`Invalid identifier: ${name}`);
         }
         return this.getTypeOfIdentifier(name);
-      case RustLiteParser.U64_TYPE:
-        return "u64";
-      case RustLiteParser.I64_TYPE:
-        return "i64";
+      case RustLiteParser.U32_TYPE:
+        return "u32";
+      case RustLiteParser.I32_TYPE:
+        return "i32";
     }
     throw new Error(`Unknown token type: ${token.text}`);
   }
