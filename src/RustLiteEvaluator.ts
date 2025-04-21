@@ -62,11 +62,11 @@ import {
 
 import { BasicEvaluator } from "conductor/dist/conductor/runner";
 import { IRunnerPlugin } from "conductor/dist/conductor/runner/types";
+import { RustLiteBorrowChecker } from "./RustLiteBorrowChecker";
 import { RustLiteLexer } from "./parser/src/RustLiteLexer";
 import { RustLiteTypeChecker } from "./RustLiteTypeChecker";
 import { RustLiteVirtualMachine } from "./RustLiteVirtualMachine";
 import { RustLiteVisitor } from "./parser/src/RustLiteVisitor";
-import { RustLiteBorrowChecker } from "./RustLiteBorrowChecker";
 
 class RustLiteEvaluatorVisitor
   extends AbstractParseTreeVisitor<void>
@@ -764,9 +764,13 @@ class RustLiteEvaluatorVisitor
     }
 
     const string = stringCtx?.getText() ?? "";
+
+    // Remove quotes from string
+    const stringWithoutQuotes = string.slice(1, -1);
+
     const args = argsCtx ?? [];
 
-    const stringToPrint = string;
+    const stringToPrint = stringWithoutQuotes;
     console.log(`String to print: ${stringToPrint}`);
     this.instrs[this.wc++] = loadConstant(stringToPrint);
     // Load args in reverse order
