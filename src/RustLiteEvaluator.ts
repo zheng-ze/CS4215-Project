@@ -88,13 +88,9 @@ class RustLiteEvaluatorVisitor
       return;
     }
     for (let i = 0; i < globalElements.length; i++) {
-      try {
-        if (!globalElements[i]) continue;
-        console.log(`Statement: ${globalElements[i].getText()}`);
-        this.visitGlobalElement(globalElements[i]);
-      } catch (error) {
-        throw `Error while visiting statement ${globalElements[i]}, with error: ${error}`;
-      }
+      if (!globalElements[i]) continue;
+      console.log(`Statement: ${globalElements[i].getText()}`);
+      this.visitGlobalElement(globalElements[i]);
     }
     const compileTimePos = { first: 0, second: 0 };
     if (!compileTimePos) {
@@ -380,18 +376,14 @@ class RustLiteEvaluatorVisitor
     console.log(`Number of statements: ${stmts.length}`);
     for (let stmt of stmts) {
       if (!stmt) continue;
-      try {
-        console.log(`Statement: ${stmt.getText()}`);
+      console.log(`Statement: ${stmt.getText()}`);
 
-        // Check if this is a return statement
-        if (stmt.returnStmt()) {
-          hasReturn = true;
-        }
-
-        this.visitStmt(stmt);
-      } catch (error) {
-        throw `Error while visiting statement ${stmt.getText()}, with error: ${error}`;
+      // Check if this is a return statement
+      if (stmt.returnStmt()) {
+        hasReturn = true;
       }
+
+      this.visitStmt(stmt);
     }
 
     // Only add EXIT_SCOPE if there's no return statement
@@ -461,12 +453,8 @@ class RustLiteEvaluatorVisitor
 
     for (let stmt of stmts) {
       if (!stmt) continue;
-      try {
-        console.log(`Statement: ${stmt.getText()}`);
-        this.visitStmt(stmt);
-      } catch (error) {
-        throw `Error while visiting statement ${stmt.getText()}, with error: ${error}`;
-      }
+      console.log(`Statement: ${stmt.getText()}`);
+      this.visitStmt(stmt);
     }
     this.scopeList = prevScopeList;
     this.scopeList.push(currentScope);
