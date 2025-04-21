@@ -173,6 +173,23 @@ describe("RustLiteEvaluator", () => {
       "6 != 7: true",
     ]);
   });
+
+  it("should throw an error while mutating immutable variables", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+    const testCode = `
+    fn main() {
+      let x = 10;
+      x = 20; // Error: cannot assign twice to immutable variable
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs.length).toBe(1);
+    expect(conductor.outputs[0]).toBe(
+      "Compile Error: Cannot assign twice to immutable variable x"
+    );
+  });
+
   it("should support function calls and returns", async () => {
     const conductor = new JestConductor();
     const evaluator = new RustLiteEvaluator(conductor);
@@ -190,6 +207,7 @@ describe("RustLiteEvaluator", () => {
     await evaluator.evaluateChunk(testCode);
     expect(conductor.outputs).toEqual(["3 + 4 = 7"]);
   });
+
   it("should handle nested function calls", async () => {
     const conductor = new JestConductor();
     const evaluator = new RustLiteEvaluator(conductor);
@@ -237,6 +255,29 @@ describe("RustLiteEvaluator", () => {
     expect(conductor.outputs).toEqual([
       "x is greater than 5",
       "y is not greater than 5",
+    ]);
+  });
+
+  it("should support while loops", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+
+    const testCode = `
+    fn main() {
+      let mut count = 0;
+      while count < 5 {
+        println!("Count: {}", count);
+        count = count + 1;
+      }
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs).toEqual([
+      "Count: 0",
+      "Count: 1",
+      "Count: 2",
+      "Count: 3",
+      "Count: 4",
     ]);
   });
 
