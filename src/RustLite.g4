@@ -69,8 +69,7 @@ logicExpr: primary=BOOL
         | left=logicExpr op=('>'|'<'|'=='|'!='|'<='|'>=') right=logicExpr
         | op='!' right=logicExpr
         | left=logicExpr op='&&' right=logicExpr
-        | left=logicExpr op='||' right=logicExpr
-        | INT {this.notifyErrorListeners("Cannot use INT without comparison operators in logical expressions", null, null);};
+        | left=logicExpr op='||' right=logicExpr;
 
 globalElement: fnDeclareStmt;
 

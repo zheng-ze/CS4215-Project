@@ -173,4 +173,143 @@ describe("RustLiteEvaluator", () => {
       "6 != 7: true",
     ]);
   });
+  it("should support function calls and returns", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+
+    const testCode = `
+    fn add(a: i32, b: i32) -> i32 {
+      return a + b;
+    }
+    
+    fn main() {
+      let result = add(3, 4);
+      println!("3 + 4 = {}", result);
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs).toEqual(["3 + 4 = 7"]);
+  });
+  it("should handle nested function calls", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+
+    const testCode = `
+    fn square(x: i32) -> i32 {
+      return x * x;
+    }
+    
+    fn sum_of_squares(a: i32, b: i32) -> i32 {
+      return square(a) + square(b);
+    }
+    
+    fn main() {
+      println!("Sum of squares: {}", sum_of_squares(3, 4));
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs).toEqual(["Sum of squares: 25"]);
+  });
+
+  it("should support if-else statements", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+
+    const testCode = `
+    fn main() {
+      let x = 10;
+      
+      if x > 5 {
+        println!("x is greater than 5");
+      } else {
+        println!("x is not greater than 5");
+      }
+      
+      let y = 3;
+      if y > 5 {
+        println!("y is greater than 5");
+      } else {
+        println!("y is not greater than 5");
+      }
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs).toEqual([
+      "x is greater than 5",
+      "y is not greater than 5",
+    ]);
+  });
+
+  it("should support vector creation and access", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+
+    const testCode = `
+    fn main() {
+      let nums = vec![1, 2, 3, 4, 5];
+      println!("First: {}", nums[0]);
+      println!("Third: {}", nums[2]);
+      println!("Length: {}", nums.len());
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs).toEqual(["First: 1", "Third: 3", "Length: 5"]);
+  });
+
+  it("should handle nested scopes and blocks", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+
+    const testCode = `
+    fn main() {
+      let x = 10;
+      {
+        let y = 20;
+        println!("Inner x: {}, y: {}", x, y);
+        
+        {
+          let z = 30;
+          println!("Nested x: {}, y: {}, z: {}", x, y, z);
+        }
+      }
+      
+      println!("Outer x: {}", x);
+      // println!("y should be out of scope: {}", y); // This would be a compile error
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs).toEqual([
+      "Inner x: 10, y: 20",
+      "Nested x: 10, y: 20, z: 30",
+      "Outer x: 10",
+    ]);
+  });
+
+  it("should handle type errors", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+
+    const testCode = `
+    fn main() {
+      let x: i64 = true; // Type error
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs[0]).toContain("Error");
+  });
+
+  it("should detect borrow checker violations", async () => {
+    const conductor = new JestConductor();
+    const evaluator = new RustLiteEvaluator(conductor);
+
+    const testCode = `
+    fn main() {
+      let v = vec![1, 2, 3];
+      let v2 = v;
+      println!("{}", v[0]); // Use after move error
+    }
+    `;
+    await evaluator.evaluateChunk(testCode);
+    expect(conductor.outputs[0]).toContain("Error");
+  });
 });

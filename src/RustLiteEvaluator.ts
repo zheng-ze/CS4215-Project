@@ -534,7 +534,7 @@ class RustLiteEvaluatorVisitor
     for (let i = 0; i < jumps.length; i++) {
       const jump = jumps[i];
       if (!jump) continue;
-      jump.addr = this.wc + 1;
+      jump.addr = this.wc; // Do not increment wc here as the last instruction we added already incremented it
     }
     return;
   }
