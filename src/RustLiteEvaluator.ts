@@ -626,7 +626,7 @@ class RustLiteEvaluatorVisitor
 
     // Store function location in table
     let currFnTable = this.functionTables[this.functionTables.length - 1];
-    const paramScope = new Map();
+    const paramScope: Scope = new Map();
 
     const [paramTypes, paramNames] = this.processParamList(ctx.paramList());
     console.log(`Params: ${paramNames}`);
@@ -635,7 +635,10 @@ class RustLiteEvaluatorVisitor
       if (paramScope.has(paramNames[i])) {
         throw Error("Parameter name has already been declared");
       }
-      paramScope.set(paramNames[i], i);
+      paramScope.set(paramNames[i], {
+        first: i,
+        second: false,
+      });
     }
 
     currFnTable.set(fnName, { second: this.wc + 1, first: paramScope }); // +1 to skip the jump instruction
