@@ -154,7 +154,7 @@ export class RustLiteBorrowChecker {
     if (!args) return;
     for (const arg of args.expr()) {
       const argNameCtx = arg.IDENTIFIER();
-      if (!argNameCtx) throw new Error("Argument name is invalid");
+      if (!argNameCtx) continue;
       const argName = argNameCtx.getText();
       if (this.referenceTypes[this.scopeDepth - 1].has(argName)) {
         const hasMoved = this.referenceTypes[this.scopeDepth - 1].get(argName);
