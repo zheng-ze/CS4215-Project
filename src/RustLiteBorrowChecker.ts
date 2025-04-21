@@ -10,10 +10,15 @@ import {
   GlobalElementContext,
   LogicExprContext,
   ParamListContext,
+  PrintlnMacroContext,
   ProgContext,
   StmtContext,
+  VectorExprContext,
+  VectorIndexAccessContext,
+  VectorLenContext,
 } from "./parser/src/RustLiteParser";
-import { RustLiteTypeEnv } from "./RustLiteTypes";
+
+// TODO: improve error messages
 
 export class RustLiteBorrowChecker {
   private referenceTypes: Map<string, boolean>[];
@@ -86,6 +91,8 @@ export class RustLiteBorrowChecker {
     if (exprStatement) return this.visitExprStmt(exprStatement);
     const fnDeclareStmt = ctx.fnDeclareStmt();
     if (fnDeclareStmt) return this.visitFnDeclareStmt(fnDeclareStmt);
+    const printLn = ctx.printlnMacro();
+    if (printLn) return this.visitPrintLn(printLn);
   }
 
   visitDeclareStmt(ctx: DeclareStmtContext): void {
@@ -128,6 +135,8 @@ export class RustLiteBorrowChecker {
     if (logicExprCtx) return this.visitLogicExpr(logicExprCtx);
     const arithExprCtx = ctx.arithExpr();
     if (arithExprCtx) return this.visitArithExpr(arithExprCtx);
+    const vectorExprCtx = ctx.vectorExpr();
+    if (vectorExprCtx) return this.visitVectorExpr(vectorExprCtx);
   }
 
   visitLogicExpr(ctx: LogicExprContext): void {
@@ -153,6 +162,48 @@ export class RustLiteBorrowChecker {
           throw new Error(`Use of moved value ${argName}`);
         }
         this.referenceTypes[this.scopeDepth - 1].set(argName, true);
+      }
+    }
+  }
+
+  visitPrintLn(ctx: PrintlnMacroContext): void {
+    const args = ctx.printlnArgs();
+    if (!args) return;
+    const expressions = args.expr();
+
+    for (const expr of expressions) {
+      this.visitExpr(expr);
+    }
+  }
+
+  visitVectorExpr(ctx: VectorExprContext): void {
+    const vectorLenCtx = ctx.vectorLen();
+    if (vectorLenCtx) return this.visitVectorLen(vectorLenCtx);
+    const vectorIndexAccessCtx = ctx.vectorIndexAccess();
+    if (vectorIndexAccessCtx)
+      return this.visitVectorIndexAccess(vectorIndexAccessCtx);
+  }
+
+  visitVectorLen(ctx: VectorLenContext): void {
+    const identifier = ctx.IDENTIFIER();
+    if (!identifier) throw new Error("Argument name is invalid");
+    const name = identifier.getText();
+    if (this.referenceTypes[this.scopeDepth - 1].has(name)) {
+      const hasMoved = this.referenceTypes[this.scopeDepth - 1].get(name);
+      if (hasMoved) {
+        throw new Error(`Borrow of moved value ${name}`);
+      }
+    }
+  }
+
+  visitVectorIndexAccess(ctx: VectorIndexAccessContext): void {
+    const identifier = ctx.IDENTIFIER();
+    if (!identifier) throw new Error("Argument name is invalid");
+    const name = identifier.getText();
+    if (this.referenceTypes[this.scopeDepth - 1].has(name)) {
+      const hasMoved = this.referenceTypes[this.scopeDepth - 1].get(name);
+      if (hasMoved) {
+        throw new Error(`Borrow of moved value ${name}`);
       }
     }
   }
