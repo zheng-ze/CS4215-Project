@@ -107,9 +107,6 @@ class RustLiteEvaluatorVisitor
     const mainAddr = this.getFnAddr("main");
     if (mainAddr !== undefined) {
       this.instrs[this.wc++] = loadFunction(0, mainAddr); // Load the function
-      // this.instrs[this.wc++] = call(0); // Call main with 0 arguments
-      // Add a POP instruction to remove the return value from the stack
-      // This prevents the VM from getting stuck in a loop
     }
     this.instrs[this.wc++] = done(); // End program execution
   }
