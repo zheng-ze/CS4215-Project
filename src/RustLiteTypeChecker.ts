@@ -1,5 +1,6 @@
 import {
   ArithExprContext,
+  AssignStmtContext,
   BlockContext,
   CondStmtContext,
   DeclareStmtContext,
@@ -609,6 +610,7 @@ export class RustLiteTypeChecker {
     const declareStmtCtx = ctx.declareStmt();
     const fnDeclareStmtCtx = ctx.fnDeclareStmt();
     const printLn = ctx.printlnMacro();
+    const assignStmtCtx = ctx.assignStmt();
 
     // Recursively check for types on stmts that can potentially return
     if (declareStmtCtx) {
@@ -640,6 +642,9 @@ export class RustLiteTypeChecker {
     if (printLn) {
       this.visitPrintLnMacro(printLn);
       return "void";
+    }
+    if (assignStmtCtx) {
+      this.visitAssignStmt(assignStmtCtx);
     }
 
     return "void";
@@ -767,6 +772,32 @@ export class RustLiteTypeChecker {
           missingArgs + numArgs
         } positional argument in format string, but ${numArgs} arguments were given`
       );
+    }
+  }
+
+  visitAssignStmt(ctx: AssignStmtContext): void {
+    const exprStmt = ctx.exprStmt();
+    const name = ctx.IDENTIFIER()?.getText();
+    if (!exprStmt) throw new Error("Invalid expression on RHS");
+    if (!name) throw new Error("Invalid name on RHS");
+
+    const exprType = this.getTypeOfExpr(exprStmt.expr());
+    const assigneeType = this.getTypeOfIdentifier(name);
+
+    if (JSON.stringify(exprType) !== JSON.stringify(assigneeType)) {
+      let lhs: string;
+      let rhs: string;
+      if (typeof exprType === "object") {
+        lhs = exprType.kind;
+      } else {
+        lhs = exprType;
+      }
+      if (typeof assigneeType === "object") {
+        rhs = assigneeType.kind;
+      } else {
+        rhs = assigneeType;
+      }
+      throw new Error(`Mismatched types, LHS: ${lhs}, RHS: ${rhs}`);
     }
   }
 

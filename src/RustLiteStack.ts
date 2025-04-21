@@ -241,51 +241,47 @@ export class RustLiteStack {
     return output;
   }
 
-  // // Set a local variable in a specific frame by index
-  // public setLocalInFrame(
-  //   frameIndex: number,
-  //   offset: number,
-  //   value: SUPPORTED_TYPES
-  // ): void {
-  //   if (frameIndex < 0 || frameIndex >= this.frames.length) {
-  //     throw new Error(
-  //       `Invalid frame index: ${frameIndex}, total frames: ${this.frames.length}`
-  //     );
-  //   }
+  // Set a local variable in a specific frame by index
+  public setLocalInFrame(
+    frameIndex: number,
+    offset: number,
+    value: SUPPORTED_TYPES
+  ): void {
+    if (frameIndex < 0 || frameIndex >= this.frames.length) {
+      throw new Error(
+        `Invalid frame index: ${frameIndex}, total frames: ${this.frames.length}`
+      );
+    }
 
-  //   const frame = this.frames[frameIndex];
-  //   if (offset < 0 || offset >= frame.frameSize) {
-  //     throw new Error(
-  //       `Invalid frame offset: ${offset}, frame size: ${frame.frameSize}`
-  //     );
-  //   }
+    const frame = this.frames[frameIndex];
+    if (frameIndex >= this.frames.length) {
+      throw Error("Invalid frame index");
+    }
 
-  //   const index = frame.basePointer + offset;
-  //   const address = index * word_size;
+    const index = frame.basePointer + offset * word_size;
+    console.log(
+      `Setting value at offset ${offset} from frame ${
+        frameIndex + 1
+      } at index: ${index}`
+    );
+    this.dump();
 
-  //   // Check if this value is borrowed immutably
-  //   if (
-  //     frame.borrowedValues &&
-  //     frame.borrowedValues.has(address) &&
-  //     !frame.borrowedValues.get(address)
-  //   ) {
-  //     throw new Error(
-  //       `Cannot modify a value that is borrowed immutably at offset ${offset}`
-  //     );
-  //   }
-
-  //   console.log(
-  //     `Setting value ${value} at frame ${frameIndex}, offset ${offset} (address ${address})`
-  //   );
-
-  //   // Store the value
-  //   if (typeof value === "boolean") {
-  //     this.data.setFloat64(address, value ? 1 : 0, true);
-  //   } else {
-  //     this.data.setFloat64(address, Number(value), true);
-  //   }
-
-  //   // Track the lifetime of this value
-  //   frame.lifetimes.set(address, this.scopeDepth);
-  // }
+    let val;
+    let type: TypeTag;
+    if (typeof value === "boolean") {
+      val = value ? 1 : 0;
+      type = TypeTag.Bool;
+    } else if (typeof value === "number") {
+      val = value;
+      type = TypeTag.Int;
+    } else if (typeof value === "object" && value.type === "address") {
+      val = value.value;
+      type = TypeTag.Address;
+    } else {
+      throw error(`Data type not supported: ${typeof value}`);
+    }
+    console.log(`Set value: ${val} at SP: ${this.stackPointer}`);
+    this.data.setFloat64(index, val); // store the value
+    this.data.setUint8(index + type_offset, type); // store the type
+  }
 }

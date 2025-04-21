@@ -14,6 +14,7 @@ import {
   LDF,
   POP,
   PRINT_LINE,
+  REASSIGN,
   RESET,
   SET_VECTOR,
   SUPPORTED_TYPES,
@@ -94,6 +95,13 @@ export function load(level: number, offset: number): LD {
 export function assign(): ASSIGN {
   return {
     type: instruction_type.ASSIGN,
+  };
+}
+
+export function reassign(level: number, offset: number): REASSIGN {
+  return {
+    type: instruction_type.REASSIGN,
+    pos: { first: level, second: offset },
   };
 }
 

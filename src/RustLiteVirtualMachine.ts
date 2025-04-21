@@ -7,6 +7,7 @@ import {
   LD,
   LDC,
   LDF,
+  REASSIGN,
   SUPPORTED_TYPES,
   TypeTag,
   UNOP,
@@ -101,6 +102,8 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     [instruction_type.LD]: this.handle_ld_instruction.bind(this),
 
     [instruction_type.ASSIGN]: this.handle_assign_instruction.bind(this),
+
+    [instruction_type.REASSIGN]: this.handle_reassign_instruction.bind(this),
 
     [instruction_type.LDF]: this.handle_ldf_instruction.bind(this),
 
@@ -263,6 +266,15 @@ export class RustLiteVirtualMachine implements VirtualMachine<SUPPORTED_TYPES> {
     const val = this.os.pop();
     if (val == undefined) throw new Error("ASSIGN: Value not found in stack");
     this.stack.push(val);
+  }
+
+  // Reassigns a value in the stack using its offset
+  private handle_reassign_instruction(instr: instruction) {
+    const reassign = instr as REASSIGN;
+    const pos = reassign.pos;
+    const val = this.os.pop();
+    if (val == undefined) throw new Error("ASSIGN: Value not found in stack");
+    this.stack.setLocalInFrame(pos.first, pos.second, val);
   }
 
   //Loads a function into memory by creating a new frame on the stack with return address at current pc + 1
