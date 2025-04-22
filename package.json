@@ -8,8 +8,8 @@
   "scripts": {
     "build": "rollup -c",
     "generate-parser": "antlr4ng -Dlanguage=TypeScript -visitor -o src/parser src/RustLite.g4",
-    "build-local": "npx tsc --project tsconfig.test.json",
-    "run-local": "node dist-test/TestRunner.js",
+    "build-test": "npx tsc --project tsconfig.test.json",
+    "run-tests": "node dist-test/TestRunner.js",
     "test": "node --experimental-vm-modules node_modules/.bin/jest --silent"
   },
   "repository": {
